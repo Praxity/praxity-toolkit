@@ -1,0 +1,317 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Praxity pack manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "version",
+    "platforms",
+    "runtimes",
+    "tools"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[a-zA-Z0-9.-]+)?$"
+    },
+    "platforms": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "enum": [
+          "darwin-arm64",
+          "darwin-x64",
+          "linux-x64",
+          "win32-x64"
+        ]
+      }
+    },
+    "runtimes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node",
+        "typst"
+      ],
+      "properties": {
+        "node": {
+          "$ref": "#/$defs/node"
+        },
+        "typst": {
+          "$ref": "#/$defs/runtime"
+        }
+      }
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/tool"
+      }
+    }
+  },
+  "$defs": {
+    "path": {
+      "type": "string",
+      "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[a-zA-Z0-9.-]+)?$"
+    },
+    "archive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "url",
+        "sha256",
+        "format",
+        "stripComponents"
+      ],
+      "properties": {
+        "status": {
+          "const": "published"
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^(?:https://[^\\s]+|file:///[^\\r\\n\\t]+)$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "format": {
+          "enum": [
+            "tar.gz",
+            "tar.xz",
+            "zip"
+          ]
+        },
+        "stripComponents": {
+          "enum": [
+            0,
+            1
+          ]
+        }
+      }
+    },
+    "unpublished": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "status": {
+          "const": "unpublished"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "entry",
+        "runner",
+        "license",
+        "notices",
+        "archives"
+      ],
+      "properties": {
+        "id": {
+          "enum": [
+            "studio",
+            "check",
+            "trace",
+            "print",
+            "import"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[a-zA-Z0-9.-]+)?$"
+        },
+        "entry": {
+          "type": "string",
+          "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$"
+        },
+        "runner": {
+          "enum": [
+            "node",
+            "exec"
+          ]
+        },
+        "setup": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[^\\r\\n\\t]+$"
+          }
+        },
+        "doctor": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[^\\r\\n\\t]+$"
+          }
+        },
+        "license": {
+          "type": "string",
+          "minLength": 1
+        },
+        "notices": {
+          "type": "string",
+          "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$"
+        },
+        "skillPath": {
+          "type": "string",
+          "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$"
+        },
+        "archives": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "darwin-arm64": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/archive"
+                },
+                {
+                  "$ref": "#/$defs/unpublished"
+                }
+              ]
+            },
+            "darwin-x64": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/archive"
+                },
+                {
+                  "$ref": "#/$defs/unpublished"
+                }
+              ]
+            },
+            "linux-x64": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/archive"
+                },
+                {
+                  "$ref": "#/$defs/unpublished"
+                }
+              ]
+            },
+            "win32-x64": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/archive"
+                },
+                {
+                  "$ref": "#/$defs/unpublished"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "license",
+        "notices",
+        "entry",
+        "archives",
+        "provenance"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[a-zA-Z0-9.-]+)?$"
+        },
+        "license": {
+          "type": "string",
+          "minLength": 1
+        },
+        "notices": {
+          "type": "string",
+          "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$"
+        },
+        "entry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "darwin-arm64": {
+              "type": "string",
+              "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$"
+            },
+            "darwin-x64": {
+              "type": "string",
+              "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$"
+            },
+            "linux-x64": {
+              "type": "string",
+              "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$"
+            },
+            "win32-x64": {
+              "type": "string",
+              "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$"
+            }
+          }
+        },
+        "archives": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "darwin-arm64": {
+              "$ref": "#/$defs/archive"
+            },
+            "darwin-x64": {
+              "$ref": "#/$defs/archive"
+            },
+            "linux-x64": {
+              "$ref": "#/$defs/archive"
+            },
+            "win32-x64": {
+              "$ref": "#/$defs/archive"
+            }
+          }
+        },
+        "provenance": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "node": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/runtime"
+        },
+        {
+          "properties": {
+            "version": {
+              "type": "string",
+              "pattern": "^24\\.(?:1[89]|[2-9][0-9]|[1-9][0-9]{2,})\\.[0-9]+$"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

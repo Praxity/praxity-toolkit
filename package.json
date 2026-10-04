@@ -1,0 +1,12 @@
+{
+  "name": "@praxity/toolkit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.18.0 <25" },
+  "scripts": {
+    "test": "node --test",
+    "validate": "node scripts/validate-manifest.mjs pack.json",
+    "build:adapters": "node scripts/build-adapters.mjs"
+  }
+}

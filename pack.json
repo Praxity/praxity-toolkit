@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "version": "0.1.0",
+  "platforms": [
+    "darwin-arm64"
+  ],
+  "runtimes": {
+    "node": {
+      "version": "24.21.0",
+      "license": "MIT and bundled third-party licences",
+      "notices": "LICENSE",
+      "provenance": "https://nodejs.org/dist/v24.21.0/SHASUMS256.txt.asc; verified signing key 5BE8A3F6C8A5C01D106C0AD820B1A390B168D356",
+      "entry": {
+        "darwin-arm64": "bin/node",
+        "darwin-x64": "bin/node",
+        "linux-x64": "bin/node",
+        "win32-x64": "node.exe"
+      },
+      "archives": {
+        "darwin-arm64": {
+          "status": "published",
+          "url": "https://nodejs.org/dist/v24.21.0/node-v24.21.0-darwin-arm64.tar.gz",
+          "sha256": "bed7eea5325e1108f32ce5228ddd6a5f0f08a499ee42aa7442aea583702f6057",
+          "format": "tar.gz",
+          "stripComponents": 1
+        },
+        "darwin-x64": {
+          "status": "published",
+          "url": "https://nodejs.org/dist/v24.21.0/node-v24.21.0-darwin-x64.tar.gz",
+          "sha256": "1462cb3b3046b815cf8ea436d3da450ec1a9f11dac7e5a46b0ada5305d7e8097",
+          "format": "tar.gz",
+          "stripComponents": 1
+        },
+        "linux-x64": {
+          "status": "published",
+          "url": "https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.gz",
+          "sha256": "6e1db87ef58b8819e5d5402eff1536491b18edd8eb7bee5ef7897876e88dc5ff",
+          "format": "tar.gz",
+          "stripComponents": 1
+        },
+        "win32-x64": {
+          "status": "published",
+          "url": "https://nodejs.org/dist/v24.21.0/node-v24.21.0-win-x64.zip",
+          "sha256": "158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541",
+          "format": "zip",
+          "stripComponents": 1
+        }
+      }
+    },
+    "typst": {
+      "version": "0.15.1",
+      "license": "Apache-2.0",
+      "notices": "LICENSE",
+      "provenance": "https://api.github.com/repos/typst/typst/releases/tags/v0.15.1; official asset SHA-256 digests",
+      "entry": {
+        "darwin-arm64": "typst",
+        "darwin-x64": "typst",
+        "linux-x64": "typst",
+        "win32-x64": "typst.exe"
+      },
+      "archives": {
+        "darwin-arm64": {
+          "status": "published",
+          "url": "https://github.com/typst/typst/releases/download/v0.15.1/typst-aarch64-apple-darwin.tar.xz",
+          "sha256": "48f62ed034aa3a7978309579ac6ca00045e2ef0da73114e8af27cfd8e74dc05a",
+          "format": "tar.xz",
+          "stripComponents": 1
+        },
+        "darwin-x64": {
+          "status": "published",
+          "url": "https://github.com/typst/typst/releases/download/v0.15.1/typst-x86_64-apple-darwin.tar.xz",
+          "sha256": "7f9fdd9584866245de9a79e0add8f9236fae6f40a8a45e2c4771ccc14db4e0fa",
+          "format": "tar.xz",
+          "stripComponents": 1
+        },
+        "linux-x64": {
+          "status": "published",
+          "url": "https://github.com/typst/typst/releases/download/v0.15.1/typst-x86_64-unknown-linux-musl.tar.xz",
+          "sha256": "a6d077d0a95eed5a2eba715b2dae06be954f624ccbf85758a03f389ded33118c",
+          "format": "tar.xz",
+          "stripComponents": 1
+        },
+        "win32-x64": {
+          "status": "published",
+          "url": "https://github.com/typst/typst/releases/download/v0.15.1/typst-x86_64-pc-windows-msvc.zip",
+          "sha256": "19ce3551153c2fe7ee9fa2f95208310c8f4d3209fedb699e0333faf8913f6736",
+          "format": "zip",
+          "stripComponents": 1
+        }
+      }
+    }
+  },
+  "tools": [
+    {
+      "id": "studio",
+      "version": "0.3.0",
+      "entry": "praxity.mjs",
+      "runner": "node",
+      "license": "PolyForm Perimeter 1.0.1",
+      "notices": "THIRD-PARTY-NOTICES.md",
+      "skillPath": "skill",
+      "archives": {
+        "darwin-arm64": {
+          "status": "unpublished",
+          "reason": "Desktop v0.3.0 is a draft with no CLI assets. Publish the browser editor, skill and legal payload."
+        },
+        "darwin-x64": {
+          "status": "unpublished",
+          "reason": "Desktop v0.3.0 is a draft with no CLI assets. Publish the browser editor, skill and legal payload."
+        },
+        "linux-x64": {
+          "status": "unpublished",
+          "reason": "Desktop v0.3.0 is a draft with no CLI assets. Publish the browser editor, skill and legal payload."
+        },
+        "win32-x64": {
+          "status": "unpublished",
+          "reason": "Desktop v0.3.0 is a draft with no CLI assets. Publish the browser editor, skill and legal payload."
+        }
+      }
+    },
+    {
+      "id": "check",
+      "version": "0.6.0",
+      "entry": "lib/cli.js",
+      "runner": "node",
+      "setup": [
+        "setup"
+      ],
+      "doctor": [
+        "doctor",
+        "--json"
+      ],
+      "license": "PolyForm Perimeter 1.0.1",
+      "notices": "THIRD-PARTY-NOTICES.md",
+      "skillPath": "skill",
+      "archives": {
+        "darwin-arm64": {
+          "status": "unpublished",
+          "reason": "Releases have no portable archives. Publish the setup/doctor build and its skill and legal payload."
+        },
+        "darwin-x64": {
+          "status": "unpublished",
+          "reason": "Releases have no portable archives. Publish the setup/doctor build and its skill and legal payload."
+        },
+        "linux-x64": {
+          "status": "unpublished",
+          "reason": "Releases have no portable archives. Publish the setup/doctor build and its skill and legal payload."
+        },
+        "win32-x64": {
+          "status": "unpublished",
+          "reason": "Releases have no portable archives. Publish the setup/doctor build and its skill and legal payload."
+        }
+      }
+    },
+    {
+      "id": "trace",
+      "version": "0.1.1",
+      "entry": "src/cli.ts",
+      "runner": "node",
+      "license": "PolyForm Perimeter 1.0.1",
+      "notices": "THIRD-PARTY-NOTICES.md",
+      "skillPath": "skill",
+      "archives": {
+        "darwin-arm64": {
+          "status": "unpublished",
+          "reason": "Releases have no archives. Archive the pnpm package output with skill and legal payload."
+        },
+        "darwin-x64": {
+          "status": "unpublished",
+          "reason": "Releases have no archives. Archive the pnpm package output with skill and legal payload."
+        },
+        "linux-x64": {
+          "status": "unpublished",
+          "reason": "Releases have no archives. Archive the pnpm package output with skill and legal payload."
+        },
+        "win32-x64": {
+          "status": "unpublished",
+          "reason": "Releases have no archives. Archive the pnpm package output with skill and legal payload."
+        }
+      }
+    },
+    {
+      "id": "print",
+      "version": "0.1.0",
+      "entry": "src/cli.ts",
+      "runner": "node",
+      "license": "PolyForm Perimeter 1.0.1",
+      "notices": "THIRD-PARTY-NOTICES.md",
+      "skillPath": "skill",
+      "archives": {
+        "darwin-arm64": {
+          "status": "unpublished",
+          "reason": "No release. Publish a portable pnpm package archive with fonts, skill and legal payload."
+        },
+        "darwin-x64": {
+          "status": "unpublished",
+          "reason": "No release. Publish a portable pnpm package archive with fonts, skill and legal payload."
+        },
+        "linux-x64": {
+          "status": "unpublished",
+          "reason": "No release. Publish a portable pnpm package archive with fonts, skill and legal payload."
+        },
+        "win32-x64": {
+          "status": "unpublished",
+          "reason": "No release. Publish a portable pnpm package archive with fonts, skill and legal payload."
+        }
+      }
+    },
+    {
+      "id": "import",
+      "version": "0.1.0",
+      "entry": "src/cli.ts",
+      "runner": "node",
+      "license": "PolyForm Perimeter 1.0.1",
+      "notices": "THIRD-PARTY-NOTICES.md",
+      "skillPath": "skill",
+      "archives": {
+        "darwin-arm64": {
+          "status": "unpublished",
+          "reason": "No portable packaging yet. Add packaging, skill and legal payload, then publish archives."
+        },
+        "darwin-x64": {
+          "status": "unpublished",
+          "reason": "No portable packaging yet. Add packaging, skill and legal payload, then publish archives."
+        },
+        "linux-x64": {
+          "status": "unpublished",
+          "reason": "No portable packaging yet. Add packaging, skill and legal payload, then publish archives."
+        },
+        "win32-x64": {
+          "status": "unpublished",
+          "reason": "No portable packaging yet. Add packaging, skill and legal payload, then publish archives."
+        }
+      }
+    }
+  ]
+}

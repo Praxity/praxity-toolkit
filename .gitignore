@@ -1,0 +1,4 @@
+AGENTS.local.md
+node_modules/
+dist/
+*.log

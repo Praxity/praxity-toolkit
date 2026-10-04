@@ -1,0 +1,40 @@
+name: Toolkit checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+      - run: npm run validate
+      - run: node --test
+  macos-install:
+    runs-on: [self-hosted, macOS, ARM64, praxity-release]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+      - run: npm run validate
+      - run: node --test
+      - name: Real manifest install in an isolated home
+        shell: bash
+        run: |
+          set -euo pipefail
+          task_home=$(mktemp -d "${RUNNER_TEMP}/praxity-toolkit.XXXXXX")
+          trap 'rm -rf -- "$task_home"' EXIT
+          export HOME="$task_home"
+          sh install.sh
+          "$HOME/.praxity/bin/praxity" version
+          "$HOME/.praxity/bin/praxity" doctor --json
+          sh install.sh
+          sh install.sh uninstall
