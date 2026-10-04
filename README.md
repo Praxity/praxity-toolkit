@@ -67,9 +67,21 @@ Rerun the same installer after a failed download or interruption. Complete
 verified archives remain in the cache; partial downloads restart. A stale lock
 is reclaimed only if the ownership ledger records its creation and its process
 is dead. A live lock stops the run.
-Checksum failures publish no version or launcher. Installed file damage and a
-different manifest using the same pack version are refused. Resolve the reported
-damage or select a new version; the installer does not silently replace it.
+The installer writes its intended paths and hashes to `.install-ledger.tsv`
+before downloading, extracting, copying or moving files. Reruns discard recorded
+unfinished writes and rebuild the stage, or finish activating a verified version
+that was already moved into place. Files absent from the journal are preserved
+and stop recovery. Completed files with changed bytes also stop recovery.
+
+If the journal is corrupted, close Studio and keep the reported files. Move
+`~/.praxity/toolkit` and `~/.praxity/bin/praxity` to a backup folder outside
+`~/.praxity`, then rerun the reviewed installer. If present, move
+`~/.praxity-toolkit-bootstrap.tsv` to that backup too. Do not delete the journal
+and run uninstall, since the installer would no longer know which files it owns.
+Keep the backup until you have recovered any personal files from it.
+Checksum failures publish no version or launcher. Installed file damage is
+refused. Roll back to an intact previous pack, or use the backup procedure above
+before reinstalling. A different manifest needs a new pack version.
 
 Updates retain the previous version. Both version pointers change in one atomic
 rename. Save and close Studio before switching or removing a pack. This scaffold

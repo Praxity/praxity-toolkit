@@ -3,6 +3,20 @@
 # unowned; hashes prevent deletion of files edited after their creation.
 LEDGER="$ROOT/.install-ledger.tsv"
 TAB=$(printf '\t')
+ledger_validate() {
+  LC_ALL=C awk -F '\t' '
+    function hash(value) {return length(value)==64 && value !~ /[^a-f0-9]/}
+    NR==1 {if($0!="praxity-toolkit-install-ledger-v1") exit 1; next}
+    {
+      if(NF!=3 || $3=="" || $3 ~ /(^\/|\\|\/\/|\/$|(^|\/)\.\.?(\/|$)|^[A-Za-z]:|\r)/) exit 1
+      if($1 ~ /^(D|X|B)$/) {if($2!="-") exit 1}
+      else if($1 ~ /^(F|L|Q)$/) {if(!hash($2)) exit 1}
+      else if($1=="P") {if($2!="-" && !hash($2)) exit 1}
+      else if($1=="U") {if(split($2,parts,":")!=2 || (parts[1]!="-" && !hash(parts[1])) || !hash(parts[2])) exit 1}
+      else exit 1
+    }
+  ' "$LEDGER" || die 'Corrupted install journal; see README recovery'
+}
 sha256() (
   SHA_OUTPUT=$(shasum -a 256 "$1") || die "Cannot hash file: $1"
   printf '%s\n' "$SHA_OUTPUT" | awk '{print $1}'
@@ -16,6 +30,10 @@ ledger_key() {
 ledger_entry() {
   KEY=$(ledger_key "$1")
   awk -F '\t' -v key="$KEY" '$3 == key {row=$0} END {print row}' "$LEDGER"
+}
+ledger_intent() {
+  contained "$1"
+  printf '%s\t%s\t%s\n' "$2" "$3" "$(ledger_key "$1")" >> "$LEDGER"
 }
 ledger_record() (
   contained "$1"
@@ -32,6 +50,7 @@ ledger_assert() (
   HASH=$(printf '%s\n' "$ENTRY" | cut -f 2)
   case "$TYPE" in
     D) [ -d "$1" ] || die "Owned directory changed: $1" ;;
+    P|B) [ -f "$1" ] || die "Pending output changed: $1" ;;
     U) [ -f "$1" ] || die "Owned file changed: $1"
        ACTUAL=$(sha256 "$1")
        [ "$ACTUAL" = "${HASH%:*}" ] || [ "$ACTUAL" = "${HASH#*:}" ] || die "Owned file changed: $1" ;;
@@ -56,6 +75,7 @@ owned_mkdir() {
   contained "$1"
   if [ -e "$1" ]; then ledger_assert "$1"; return; fi
   [ -d "${1%/*}" ] || owned_mkdir "${1%/*}"
+  ledger_intent "$1" D -
   mkdir "$1"
   ledger_record "$1"
 }
@@ -85,13 +105,20 @@ owned_publish() {
   printf 'X\t-\t%s\n' "$(ledger_key "$SOURCE")" >> "$LEDGER"
 }
 new_temp() {
-  TEMPORARY=$(mktemp "$WORK/item.XXXXXX") || die 'Cannot create exclusive metadata temporary'
+  # Select an absent name, journal it, then create exclusively. mktemp's create
+  # would leave an unrecorded file if killed before its next command.
+  TEMPORARY=$(mktemp -u "${1:-$WORK/item}.XXXXXX") || die 'Cannot choose metadata temporary'
+  contained "$TEMPORARY"
+  [ ! -e "$TEMPORARY" ] && [ ! -L "$TEMPORARY" ] || die 'Temporary already exists'
+  ledger_intent "$TEMPORARY" B -
+  (set -C; : > "$TEMPORARY") || die 'Cannot create exclusive metadata temporary'
   ledger_record "$TEMPORARY"
   printf '%s\n' "$TEMPORARY"
 }
 capture() {
   OUTPUT=$1; shift
   ledger_assert "$OUTPUT"
+  ledger_intent "$OUTPUT" B -
   STATUS=0
   "$@" > "$OUTPUT" || STATUS=$?
   ledger_record "$OUTPUT"
@@ -100,6 +127,7 @@ capture() {
 fetch() {
   OUTPUT=$1; URL=$2
   ledger_assert "$OUTPUT"
+  ledger_intent "$OUTPUT" P "${3:--}"
   STATUS=0
   (cd -- "${OUTPUT%/*}" && curl --fail --location --proto '=https,file' --proto-redir '=https' --connect-timeout 15 --max-time 300 --retry 2 --output "${OUTPUT##*/}" "$URL") || STATUS=$?
   ledger_record "$OUTPUT"

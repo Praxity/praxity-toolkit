@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { writeFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
-import { installation, shell, posix, quote } from './installer-fixture.mjs';
+import { installation, shell, posix, quote, archive } from './installer-fixture.mjs';
 import { repository } from './helpers.mjs';
 function tar(entries) {
   const parts = [];
@@ -44,4 +44,23 @@ test('BSD tar completes the local installer fixture', { skip: process.platform !
   writeFileSync(join(bin, 'tar'), '#!/bin/sh\nexec /c/Windows/System32/tar.exe "$@"\n', { mode: 0o755 });
   const r = shell(`export PATH=${quote(posix(bin))}:"$PATH"; sh ${quote(posix(join(repository, 'install.sh')))} --manifest ${quote(pathToFileURL(setup.manifest).href)} --platform darwin-arm64`, { env: setup.env });
   assert.equal(r.status, 0, r.stderr);
+});
+
+test('XZ archive hashes are journaled before extraction with BSD tar inventory', t => {
+  const setup = installation(t, { tool: false }), file = join(setup.root, 'typst.tar.xz');
+  if (process.platform === 'win32') {
+    // Native Node receives Windows paths from the fixture adapter. Use native
+    // BSD tar so GNU tar does not interpret the drive colon as a remote host.
+    const node = join(setup.root, 'fake node/bin/node');
+    writeFileSync(node, readFileSync(node, 'utf8').replace('\nexec ', '\nPATH=/c/Windows/System32:"$PATH" exec '));
+    setup.pack.runtimes.node.archives['darwin-arm64'] = archive(join(setup.root, 'fake node'), join(setup.root, 'node archive.tar.gz'));
+  }
+  const packed = shell(`tar -cJf ${quote(posix(file))} -C ${quote(posix(join(setup.root, 'fake typst')))} .`);
+  assert.equal(packed.status, 0, packed.stderr);
+  setup.pack.runtimes.typst.archives['darwin-arm64'] = { status: 'published', url: pathToFileURL(file).href,
+    sha256: createHash('sha256').update(readFileSync(file)).digest('hex'), format: 'tar.xz', stripComponents: 0 };
+  setup.save();
+  const installed = setup.install(); assert.equal(installed.status, 0, installed.stderr);
+  assert.equal(readFileSync(join(setup.toolkit, '0.1.0/runtimes/typst/LICENSE'), 'utf8'), 'Typst fixture licence\n');
+  const removed = setup.action('uninstall'); assert.equal(removed.status, 0, removed.stderr);
 });

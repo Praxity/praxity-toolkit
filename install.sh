@@ -30,26 +30,42 @@ BIN="$INSTALL_HOME/.praxity/bin"
 contained "$ROOT"
 command -v shasum >/dev/null 2>&1 || die 'Install needs shasum -a 256'
 # Only absent paths are claimed. Existing parents remain unowned containers.
-NEW_PARENT=
-NEW_ROOT=
-if [ ! -e "$INSTALL_HOME/.praxity" ]; then mkdir "$INSTALL_HOME/.praxity"; NEW_PARENT=1; fi
-if [ ! -e "$ROOT" ]; then mkdir "$ROOT"; NEW_ROOT=1; fi
 [ ! -L "$LEDGER" ] || die 'Ledger symlink refused'
 if [ ! -e "$LEDGER" ]; then
-  (set -C; printf 'praxity-toolkit-install-ledger-v1\n' > "$LEDGER") || die 'Cannot create ownership ledger exclusively'
+  # The first journal lives in HOME until its recorded parents exist.
+  INITIAL_LEDGER="$INSTALL_HOME/.praxity-toolkit-bootstrap.tsv"
+  contained "$INITIAL_LEDGER"
+  if [ ! -e "$INITIAL_LEDGER" ]; then
+    (set -C
+      { printf 'praxity-toolkit-install-ledger-v1\n'
+        [ -d "$INSTALL_HOME/.praxity" ] || printf 'D\t-\t.praxity\n'
+        [ -d "$ROOT" ] || printf 'D\t-\t.praxity/toolkit\n'
+      } > "$INITIAL_LEDGER"
+    ) || die 'Cannot create ownership ledger exclusively'
+  fi
+  LEDGER="$INITIAL_LEDGER"
+  ledger_validate
+  [ -d "$INSTALL_HOME/.praxity" ] || owned_mkdir "$INSTALL_HOME/.praxity"
+  [ -d "$ROOT" ] || owned_mkdir "$ROOT"
+  mv "$LEDGER" "$ROOT/.install-ledger.tsv"
+  LEDGER="$ROOT/.install-ledger.tsv"
 fi
 [ "$(sed -n '1p' "$LEDGER")" = praxity-toolkit-install-ledger-v1 ] || die 'Unrecognized install ledger'
-[ -z "$NEW_PARENT" ] || ledger_record "$INSTALL_HOME/.praxity"
-[ -z "$NEW_ROOT" ] || ledger_record "$ROOT"
+ledger_validate
 [ ! -L "$ROOT/.install-lock" ] || die 'Install lock is a symlink'
 if [ -e "$ROOT/.install-lock" ]; then
   contained "$ROOT/.install-lock/pid"
   PID=$(cat "$ROOT/.install-lock/pid" 2>/dev/null || true)
-  case "$PID" in ''|*[!0-9]*) die 'Install locked; inspect the lock' ;; esac
-  if kill -0 "$PID" 2>/dev/null; then die "Install locked by process $PID"; fi
+  case "$PID" in
+    '') ledger_assert "$ROOT/.install-lock" ;;
+    *[!0-9]*) die 'Install locked; inspect the lock' ;;
+    *) if kill -0 "$PID" 2>/dev/null; then die "Install locked by process $PID"; fi ;;
+  esac
   owned_remove_tree "$ROOT/.install-lock"
 fi
 owned_mkdir "$ROOT/.install-lock"
+LOCK_HASH=$(printf '%s\n' "$$" | shasum -a 256 | awk '{print $1}')
+ledger_intent "$ROOT/.install-lock/pid" P "$LOCK_HASH"
 printf '%s\n' "$$" > "$ROOT/.install-lock/pid"
 ledger_record "$ROOT/.install-lock/pid"
 LAUNCHER_TEMP=
@@ -85,8 +101,8 @@ launcher_owned() {
 for METADATA in active active.tmp .manifest.json .manifest.tsv .plan.tsv .archive-list .archive-links .launcher-sha256; do
   owned_destination "$ROOT/$METADATA"
 done
-WORK=$(mktemp -d "$ROOT/.metadata.XXXXXX")
-ledger_record "$WORK"
+WORK=$(mktemp -u "$ROOT/.metadata.XXXXXX")
+owned_mkdir "$WORK"
 if [ -f "$ROOT/active" ]; then
   ledger_assert "$ROOT/active"
   ACTIVE_VERSION=$(sed -n '1p' "$ROOT/active")
@@ -178,9 +194,8 @@ download() (
   owned_destination "$ROOT/.cache/$FILE"
   owned_destination "$ROOT/.cache/$FILE.part"
   printf 'Download: %s\n' "$URL"
-  PARTIAL=$(mktemp "$ROOT/.cache/$FILE.part.XXXXXX")
-  ledger_record "$PARTIAL"
-  fetch "$PARTIAL" "$URL" || die 'Download interrupted or failed; rerun the same install command'
+  PARTIAL=$(new_temp "$ROOT/.cache/$FILE.part")
+  fetch "$PARTIAL" "$URL" "$HASH" || die 'Download interrupted or failed; rerun the same install command'
   [ "$(sha256 "$PARTIAL")" = "$HASH" ] || { owned_remove_tree "$PARTIAL"; die "Checksum mismatch: $URL. Nothing activated."; }
   owned_publish "$PARTIAL" "$ROOT/.cache/$FILE"
 )
@@ -198,6 +213,21 @@ extract() (
   LC_ALL=C awk -v strip="$STRIP" -f "$SCRIPT_DIR/scripts/archive-links.awk" "$ARCHIVE_LINKS" || die 'Unsafe archive link or special file'
   owned_remove_tree "$DIRECTORY"
   owned_mkdir "$DIRECTORY"
+  if [ -n "$LEDGER_NODE" ]; then
+    "$LEDGER_NODE" "$SCRIPT_DIR/src/install-ledger.mjs" intent-archive "$INSTALL_HOME" "$ROOT" "$DIRECTORY" "$ARCHIVE" "$STRIP"
+  else
+    # Only Node's executable is needed before the pinned validator can run.
+    # Hash its archive bytes before extraction, including implicit parents.
+    MEMBER=$(awk -v strip="$STRIP" ' {raw=$0; count=split(raw,parts,"/"); name=""; for(i=strip+1;i<=count;i++) if(parts[i]!="." && parts[i]!="") name=name (name ? "/" : "") parts[i]; if(name=="bin/node") {print raw; found++}} END {if(found!=1) exit 1}' "$ARCHIVE_LIST") || die 'Missing or ambiguous bootstrap Node'
+    EXPECTED=$(tar -xOf "$ARCHIVE" "$MEMBER" | shasum -a 256 | awk '{print $1}')
+    owned_mkdir "$DIRECTORY/bin"
+    ledger_intent "$DIRECTORY/bin/node" P "$EXPECTED"
+    tar -xf "$ARCHIVE" -C "$DIRECTORY" --strip-components="$STRIP" "$MEMBER"
+    [ "$(sha256 "$DIRECTORY/bin/node")" = "$EXPECTED" ] || die 'Bootstrap extraction hash mismatch'
+    ledger_record "$DIRECTORY/bin/node"
+    owned_remove_tree "$ARCHIVE_LIST"; owned_remove_tree "$ARCHIVE_LINKS"
+    exit 0
+  fi
   tar -xf "$ARCHIVE" -C "$DIRECTORY" --strip-components="$STRIP"
   ledger_tree_record "$DIRECTORY"
   owned_remove_tree "$ARCHIVE_LIST"; owned_remove_tree "$ARCHIVE_LINKS"
@@ -236,16 +266,21 @@ else
   for DIRECTORY in src scripts schemas skills fixtures; do
     contained "$STAGE/$DIRECTORY"
     owned_remove_tree "$STAGE/$DIRECTORY"
+    "$NODE" "$SCRIPT_DIR/src/install-ledger.mjs" intent-copy "$INSTALL_HOME" "$ROOT" "$STAGE/$DIRECTORY" "$SCRIPT_DIR/$DIRECTORY"
     cp -R "$SCRIPT_DIR/$DIRECTORY" "$STAGE/$DIRECTORY"
     ledger_tree_record "$STAGE/$DIRECTORY"
   done
-  cp "$SCRIPT_DIR/install.sh" "$SCRIPT_DIR/package.json" "$STAGE/"
-  ledger_record "$STAGE/install.sh"; ledger_record "$STAGE/package.json"
-  cp "$MANIFEST_FILE" "$STAGE/pack.json"
-  ledger_record "$STAGE/pack.json"
-  "$NODE" "$SCRIPT_DIR/src/install.mjs" finalize "$STAGE/pack.json" "$PLATFORM" "$STAGE" "$ROOT"
+  for FILE in install.sh package.json; do
+    "$NODE" "$SCRIPT_DIR/src/install-ledger.mjs" intent-copy "$INSTALL_HOME" "$ROOT" "$STAGE/$FILE" "$SCRIPT_DIR/$FILE"
+    cp "$SCRIPT_DIR/$FILE" "$STAGE/$FILE"
+    ledger_record "$STAGE/$FILE"
+  done
+  "$NODE" "$SCRIPT_DIR/src/install-ledger.mjs" intent-copy "$INSTALL_HOME" "$ROOT" "$STAGE/pack.json" "$MANIFEST_FILE"
+  cp "$MANIFEST_FILE" "$STAGE/pack.json"; ledger_record "$STAGE/pack.json"
+  "$NODE" "$SCRIPT_DIR/src/install.mjs" finalize "$STAGE/pack.json" "$PLATFORM" "$STAGE" "$ROOT" "$INSTALL_HOME"
   ledger_tree_record "$STAGE"
   launcher_owned
+  "$NODE" "$SCRIPT_DIR/src/install-ledger.mjs" intent-move "$INSTALL_HOME" "$ROOT" "$ROOT/$VERSION" "$STAGE"
   mv "$STAGE" "$ROOT/$VERSION"
   ledger_tree_record "$ROOT/$VERSION"
 fi
@@ -254,8 +289,7 @@ if [ ! -e "$BIN" ]; then owned_mkdir "$BIN"; else contained "$BIN"; fi
 [ ! -L "$BIN" ] || die 'Bin directory is an unowned symlink'
 # Exclusive temporary names let a killed activation be retried without touching
 # an unowned file or depending on a stale fixed temporary filename.
-LAUNCHER_TEMP=$(mktemp "$BIN/.praxity-launcher.XXXXXX")
-ledger_record "$LAUNCHER_TEMP"
+LAUNCHER_TEMP=$(new_temp "$BIN/.praxity-launcher")
 capture "$LAUNCHER_TEMP" cat "$ROOT/$VERSION/launcher.sh"
 chmod +x "$LAUNCHER_TEMP"
 ledger_record "$LAUNCHER_TEMP"
