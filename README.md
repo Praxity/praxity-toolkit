@@ -149,7 +149,8 @@ full Check audit.
 
 Check currently exposes refusal in setup text rather than persistent doctor
 state. The toolkit records Check's explicit refusal line from setup run through
-`praxity`. It cannot see a refusal from Check run on its own.
+`praxity` in `~/.praxity/toolkit-state/declined.json`, outside pack folders.
+This per-user state survives updates, rollback and uninstall. It cannot see a refusal from Check run on its own.
 A component that works counts as ok, even if you refused it earlier.
 
 ## Release contract

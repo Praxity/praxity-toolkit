@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { toolInvocation, toolEnvironment, probeProcess, quotePosix } from './tools.mjs';
+import { toolInvocation, toolEnvironment, probeProcess, quotePosix, readDeclined } from './tools.mjs';
 import { buildAdapters, skillPresence } from './skills.mjs';
 import { loadSchema, validateSchema } from './schema.mjs';
 
@@ -29,8 +29,7 @@ export function doctor(context, run = probeProcess) {
         ? item('runtime.typst', 'ok', 'Tiny document compiled to PDF')
         : failed('runtime.typst', result, reinstall));
     }
-    const declinedFile = join(context.root, 'declined.json');
-    const declined = existsSync(declinedFile) ? JSON.parse(readFileSync(declinedFile, 'utf8')) : {};
+    const declined = readDeclined(context);
     for (const tool of context.pack.tools) {
       if (!context.state.installed.includes(tool.id) || !existsSync(join(context.root, 'tools', tool.id, tool.entry))) {
         items.push(item(`tool.${tool.id}`, 'not-installed', tool.archives[context.state.platform]?.reason ?? 'Tool files are absent', reinstall));

@@ -8,6 +8,7 @@ import { fixture, fakeTool } from './helpers.mjs';
 
 function prepared(t) {
   const { context } = fixture(t);
+  mkdirSync(join(context.home, '.praxity/toolkit-state'), { recursive: true });
   for (const id of ['studio', 'check', 'trace', 'print']) fakeTool(context, id);
   const typst = join(context.root, 'runtimes/typst/typst');
   mkdirSync(dirname(typst), { recursive: true }); writeFileSync(typst, 'fake binary');
@@ -32,7 +33,7 @@ function runner(context, check = checkResult) {
 }
 test('doctor aggregates ok, failed, declined and not-installed through its interface', t => {
   const context = prepared(t);
-  writeFileSync(join(context.root, 'declined.json'), '{"check":["browser"]}');
+  writeFileSync(join(context.home, '.praxity/toolkit-state/declined.json'), '{"check":["browser"]}');
   const result = doctor(context, runner(context));
   assert.deepEqual(validateSchema(result, loadSchema('doctor')), []);
   assert.equal(result.exitCode, 1);
@@ -51,7 +52,7 @@ test('missing optional components are absent until the user explicitly refuses t
 });
 test('a usable component supersedes a past refusal', t => {
   const context = prepared(t);
-  writeFileSync(join(context.root, 'declined.json'), '{"check":["java"]}');
+  writeFileSync(join(context.home, '.praxity/toolkit-state/declined.json'), '{"check":["java"]}');
   assert.equal(doctor(context, runner(context)).items.find(item => item.id === 'tool.check.java').status, 'ok');
 });
 test('malformed tool doctor and missing smoke artifacts fail visibly', t => {
@@ -72,7 +73,7 @@ test('pin mismatch and process failure are bounded diagnostic failures', t => {
 
 for (const inventory of ['intact', 'damaged', 'unmanaged']) test(`past refusal cannot mask a present ${inventory} component failure`, t => {
   const context = prepared(t);
-  writeFileSync(join(context.root, 'declined.json'), '{"check":["browser"]}');
+  writeFileSync(join(context.home, '.praxity/toolkit-state/declined.json'), '{"check":["browser"]}');
   const check = { components: [{ id: 'browser', usable: false, source: 'setup', inventory, reason: 'Browser failed to launch' }], exitCode: 1 };
   const report = doctor(context, runner(context, check));
   assert.equal(report.items.find(item => item.id === 'tool.check.browser').status, 'failed');

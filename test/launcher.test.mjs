@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, writeFileSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { runCli } from '../src/cli.mjs';
 import { loadSchema, validateSchema } from '../src/schema.mjs';
@@ -56,8 +56,19 @@ test('explicit Check setup refusal is recorded without capturing a missing compo
   const { context } = fixture(t);
   const tool = fakeTool(context, 'check', `console.log('browser: declined; dependent checks will report not run');`);
   assert.equal(await executeTool(context, tool, ['setup']), 0);
-  assert.deepEqual(JSON.parse(readFileSync(join(context.root, 'declined.json'), 'utf8')), { check: ['browser'] });
+  assert.deepEqual(JSON.parse(readFileSync(join(context.home, '.praxity/toolkit-state/declined.json'), 'utf8')), { check: ['browser'] });
+  assert.equal(existsSync(join(context.root, 'declined.json')), false);
   assert.equal(existsSync(join(context.root, 'args.json')), false);
+});
+
+test('consent state refuses a symlink and preserves the external file', async t => {
+  const { context } = fixture(t), outside = join(context.root, 'outside-state');
+  mkdirSync(outside); writeFileSync(join(outside, 'declined.json'), 'USER FILE');
+  mkdirSync(join(context.home, '.praxity'));
+  symlinkSync(outside, join(context.home, '.praxity/toolkit-state'), process.platform === 'win32' ? 'junction' : 'dir');
+  const tool = fakeTool(context, 'check', "console.log('browser: declined; dependent checks will report not run');");
+  await assert.rejects(executeTool(context, tool, ['setup']), /Tool state symlink refused/);
+  assert.equal(readFileSync(join(outside, 'declined.json'), 'utf8'), 'USER FILE');
 });
 
 test('Studio process preserves empty, quoted, Unicode and shell-like arguments; doctor JSON validates', async t => {

@@ -1,8 +1,39 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, delimiter } from 'node:path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, lstatSync, renameSync, unlinkSync, realpathSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { join, delimiter, dirname } from 'node:path';
 
 export const quotePosix = value => `'${value.replaceAll("'", "'\\''")}'`;
+
+function declinedPath(context) {
+  const home = realpathSync(context.home), directory = join(home, '.praxity', 'toolkit-state');
+  const file = join(directory, 'declined.json');
+  for (const path of [join(home, '.praxity'), directory, file]) {
+    try { if (lstatSync(path).isSymbolicLink()) throw new Error(`Tool state symlink refused: ${path}`); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
+  return file;
+}
+
+export function readDeclined(context) {
+  const file = declinedPath(context), state = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
+  if (!state || typeof state !== 'object' || Array.isArray(state) || Object.values(state).some(components => !Array.isArray(components) || components.some(value => typeof value !== 'string'))) throw new Error(`Invalid tool consent state: ${file}`);
+  return state;
+}
+
+function recordDeclined(context, tool, components) {
+  const file = declinedPath(context), prior = readDeclined(context);
+  const bytes = JSON.stringify({ ...prior, [tool]: [...new Set([...(prior[tool] ?? []), ...components])] }) + '\n';
+  mkdirSync(dirname(file), { recursive: true });
+  const temp = join(dirname(file), `.declined.${randomUUID()}.tmp`);
+  let created = false;
+  try {
+    writeFileSync(temp, bytes, { flag: 'wx', flush: true }); created = true;
+    declinedPath(context); renameSync(temp, file);
+  } finally {
+    if (created && existsSync(temp) && readFileSync(temp, 'utf8') === bytes) unlinkSync(temp);
+  }
+}
 
 export function toolInvocation(context, tool, args) {
   const directory = join(context.root, 'tools', tool.id);
@@ -47,11 +78,7 @@ export async function executeTool(context, tool, args) {
     // Record only its explicit refusal line; never classify a missing component
     // as declined. Replace this adapter when Check persists consent itself.
     const refused = [...output.matchAll(/(?:^|\n)(browser|java|verapdf): declined; dependent checks will report not run/g)].map(match => match[1]);
-    if (refused.length) {
-      const file = join(context.root, 'declined.json');
-      const prior = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
-      writeFileSync(file, JSON.stringify({ ...prior, check: [...new Set([...(prior.check ?? []), ...refused])] }) + '\n');
-    }
+    if (refused.length) recordDeclined(context, tool.id, refused);
   }
   return code;
 }
