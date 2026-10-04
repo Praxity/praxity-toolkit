@@ -111,10 +111,13 @@ test('quoted absolute launchers tolerate apostrophes as well as spaces', t => {
   const version = shell(`${quote(posix(join(setup.home, '.praxity/bin/praxity')))} version`, { env: setup.env });
   passed(version); assert.equal(JSON.parse(version.stdout).pack, '0.1.0');
 });
-test('dead-process lock is reclaimed; unsafe archive links are rejected before extraction', t => {
+test('owned dead-process lock is reclaimed; unsafe archive links are rejected before extraction', t => {
   const setup = installation(t);
-  mkdirSync(join(setup.toolkit, '.install-lock'), { recursive: true });
-  writeFileSync(join(setup.toolkit, '.install-lock/pid'), '99999999\n');
+  const mock = join(setup.root, 'kill-bin'); mkdirSync(mock);
+  writeFileSync(join(mock, 'curl'), '#!/bin/sh\nkill -KILL "$PPID"\nexit 1\n', { mode: 0o755 });
+  const interrupted = shell(`export PATH=${quote(posix(mock))}:"$PATH"; sh ${quote(posix(join(repository, 'install.sh')))} --manifest ${quote(pathToFileURL(setup.manifest).href)} --platform darwin-arm64`, { env: setup.env });
+  assert.notEqual(interrupted.status, 0);
+  assert.ok(existsSync(join(setup.toolkit, '.install-lock/pid')));
   passed(setup.install());
   const linkListing = join(setup.root, 'link listing');
   writeFileSync(linkListing, 'lrwxrwxrwx owner/group 0 2026-01-01 12:00 archive/bin/node -> /outside\n');
@@ -198,3 +201,37 @@ test('finalize validates the whole stage before creating wrappers or metadata', 
   assert.match(result.stderr, /symlink|containment/i);
   assert.equal(existsSync(join(stage, 'state.json')), false);
 });
+
+for (const location of ['.bootstrap-0.1.0/user.txt', '.staging-0.1.0/src/user.txt']) test(`unowned ${location} blocks reuse without deleting user bytes`, t => {
+  const setup = installation(t), file = join(setup.toolkit, location);
+  mkdirSync(join(file, '..'), { recursive: true }); writeFileSync(file, 'USER FILE');
+  const r = setup.install(); assert.notEqual(r.status, 0); assert.match(r.stderr, /Unowned|unowned/);
+  assert.equal(readFileSync(file, 'utf8'), 'USER FILE');
+});
+test('uninstall preserves and reports user files added to an owned version', t => {
+  const setup = installation(t); passed(setup.install());
+  const file = join(setup.toolkit, '0.1.0/user.txt'); writeFileSync(file, 'USER FILE');
+  const before = readFileSync(join(setup.toolkit, 'active'), 'utf8');
+  const r = setup.action('uninstall'); assert.notEqual(r.status, 0); assert.match(r.stderr, /user.txt/);
+  assert.equal(readFileSync(file, 'utf8'), 'USER FILE');
+  assert.equal(readFileSync(join(setup.toolkit, 'active'), 'utf8'), before);
+});
+test('uninstall before installation refuses unowned scratch data', t => {
+  const setup = installation(t), files = ['.cache/user.txt', '.staging-user/user.txt', '.bootstrap-user/user.txt'].map(name => join(setup.toolkit, name));
+  for (const file of files) { mkdirSync(join(file, '..'), { recursive: true }); writeFileSync(file, 'USER FILE'); }
+  const r = setup.action('uninstall'); assert.notEqual(r.status, 0); assert.match(r.stderr, /Unowned|unowned/);
+  for (const file of files) assert.equal(readFileSync(file, 'utf8'), 'USER FILE');
+});
+test('unowned dead-PID lock cannot be reclaimed', t => {
+  const setup = installation(t), file = join(setup.toolkit, '.install-lock/pid');
+  mkdirSync(join(file, '..'), { recursive: true }); writeFileSync(file, '99999999\n');
+  const r = setup.action('uninstall'); assert.notEqual(r.status, 0); assert.match(r.stderr, /Unowned|unowned/);
+  assert.equal(readFileSync(file, 'utf8'), '99999999\n');
+});
+test('modified installed files survive uninstall', t => {
+  const setup = installation(t); passed(setup.install());
+  const file = join(setup.toolkit, '0.1.0/tools/studio/praxity.mjs'); writeFileSync(file, 'USER EDIT');
+  const r = setup.action('uninstall'); assert.notEqual(r.status, 0);
+  assert.equal(readFileSync(file, 'utf8'), 'USER EDIT');
+});
+
