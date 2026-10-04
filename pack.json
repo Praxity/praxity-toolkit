@@ -158,12 +158,15 @@
       "entry": "src/cli.ts",
       "runner": "node",
       "license": "PolyForm Perimeter 1.0.1",
-      "notices": "THIRD-PARTY-NOTICES.md",
+      "notices": "NOTICE.md",
       "skillPath": "skill",
       "archives": {
         "darwin-arm64": {
-          "status": "unpublished",
-          "reason": "Releases have no archives. Archive the pnpm package output with skill and legal payload."
+          "status": "published",
+          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0-rc.1/praxity-trace-0.1.1-darwin-arm64.tar.gz",
+          "sha256": "52bc5aa82d29892e5570fdb88ec65bd29c728b29b890c9b7aba49bf3f48c5dbb",
+          "format": "tar.gz",
+          "stripComponents": 1
         },
         "darwin-x64": {
           "status": "unpublished",
@@ -189,8 +192,11 @@
       "skillPath": "skill",
       "archives": {
         "darwin-arm64": {
-          "status": "unpublished",
-          "reason": "No release. Publish a portable pnpm package archive with fonts, skill and legal payload."
+          "status": "published",
+          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0-rc.1/praxity-print-0.1.0-darwin-arm64.tar.gz",
+          "sha256": "221b3bcee019a80500a2fa7560a2aeb0fbf24dc99757254568f02b5ce34f685e",
+          "format": "tar.gz",
+          "stripComponents": 1
         },
         "darwin-x64": {
           "status": "unpublished",
