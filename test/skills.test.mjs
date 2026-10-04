@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, watch } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, watch, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync, spawn } from 'node:child_process';
@@ -11,6 +11,58 @@ import { doctor } from '../src/doctor.mjs';
 import { fixture, repository } from './helpers.mjs';
 
 const outputsFor = context => buildAdapters({ source: join(context.root, 'skills'), packVersion: context.pack.version });
+
+for (const modified of [false, true]) test(`a journaled skill temporary ${modified ? 'preserves changed bytes' : 'resumes a partial write'} without losing the previous adapter`, t => {
+  const { context } = fixture(t), outputs = outputsFor(context);
+  installSkills({ base: context.home, host: 't3', outputs });
+  const preload = join(context.root, 'partial-write.mjs');
+  writeFileSync(preload, `import fs from 'node:fs'; import {syncBuiltinESMExports} from 'node:module';
+    const original=fs.writeFileSync; fs.writeFileSync=function(path,bytes,...args){if(String(path).includes('.praxity-') && String(path).endsWith('.tmp')) {original(path,Buffer.from(bytes).subarray(0,8),...args);process.exit(77);} return original(path,bytes,...args);}; syncBuiltinESMExports();`);
+  const code = `import {buildAdapters,installSkills} from ${JSON.stringify(pathToFileURL(join(repository, 'src/skills.mjs')).href)};
+    installSkills({base:${JSON.stringify(context.home)},host:'codex',outputs:buildAdapters({source:${JSON.stringify(join(context.root, 'skills'))},packVersion:'0.1.0'})});`;
+  const killed = spawnSync(process.execPath, ['--import', pathToFileURL(preload).href, '--input-type=module', '-e', code], { encoding: 'utf8', timeout: 20_000 });
+  assert.equal(killed.status, 77, killed.stderr);
+  assert.ok(existsSync(join(context.home, '.claude/skills/install-praxity/SKILL.md')));
+  if (modified) {
+    const directory = join(context.home, '.agents/skills/install-praxity');
+    const temp = join(directory, readdirSync(directory).find(name => name.endsWith('.tmp')));
+    writeFileSync(temp, 'PERSONAL NOTES');
+    assert.throws(() => installSkills({ base: context.home, host: 'codex', outputs }), /Owned adapter changed/);
+    assert.equal(readFileSync(temp, 'utf8'), 'PERSONAL NOTES');
+    assert.ok(existsSync(join(context.home, '.claude/skills/install-praxity/SKILL.md')));
+    return;
+  }
+  installSkills({ base: context.home, host: 'codex', outputs });
+  assert.equal(existsSync(join(context.home, '.claude/skills/install-praxity/SKILL.md')), false);
+  assert.equal(readFileSync(join(context.home, '.agents/skills/install-praxity/SKILL.md'), 'utf8'), outputs.codex.get('.agents/skills/install-praxity/SKILL.md').toString());
+  assert.equal(JSON.parse(readFileSync(join(context.home, '.praxity/toolkit-skills.json'), 'utf8')).transaction, undefined);
+});
+
+for (const boundary of ['directory', 'pid', 'reacquired pid']) test(`skills switch recovers a crash after its ${boundary} lock write`, t => {
+  const { context } = fixture(t), outputs = outputsFor(context);
+  installSkills({ base: context.home, host: 't3', outputs });
+  const ledger = join(context.home, '.praxity/toolkit-skills.json');
+  const child = join(context.root, 'switch.mjs'), preload = join(context.root, 'cut.mjs');
+  writeFileSync(child, `import {buildAdapters,installSkills} from ${JSON.stringify(pathToFileURL(join(repository, 'src/skills.mjs')).href)}; installSkills({base:${JSON.stringify(context.home)},host:'codex',outputs:buildAdapters({source:${JSON.stringify(join(context.root, 'skills'))},packVersion:'0.1.0'})});`);
+  const run = () => spawnSync(process.execPath, ['--import', pathToFileURL(preload).href, child], { encoding: 'utf8', timeout: 20_000 });
+  if (boundary === 'reacquired pid') {
+    writeFileSync(preload, `import fs from 'node:fs'; import {syncBuiltinESMExports} from 'node:module';
+      const original=fs.renameSync; fs.renameSync=function(source,dest,...args){const result=original(source,dest,...args); if(String(dest)===${JSON.stringify(ledger)} && JSON.parse(fs.readFileSync(dest)).transaction?.phase==='stage') process.exit(77); return result;}; syncBuiltinESMExports();`);
+    const interrupted = run(); assert.equal(interrupted.status, 77, interrupted.stderr);
+  }
+  const method = boundary === 'directory' ? 'mkdirSync' : 'writeFileSync';
+  const target = join(context.home, '.praxity/toolkit-skills.lock', boundary === 'directory' ? '' : 'pid');
+  writeFileSync(preload, `import fs from 'node:fs'; import {syncBuiltinESMExports} from 'node:module';
+    let count=0; const original=fs.${method}; fs.${method}=function(path,...args){const result=original(path,...args); if(String(path)===${JSON.stringify(target)} && ++count===${boundary === 'reacquired pid' ? 2 : 1}) process.exit(77); return result;}; syncBuiltinESMExports();`);
+  const killed = run(); assert.equal(killed.status, 77, killed.stderr);
+  assert.ok(existsSync(join(context.home, '.praxity/toolkit-skills.lock')));
+  installSkills({ base: context.home, host: 'codex', outputs });
+  const state = JSON.parse(readFileSync(ledger, 'utf8'));
+  assert.equal(state.host, 'codex'); assert.equal(state.transaction, undefined); assert.equal(state.lock, undefined);
+  assert.ok(existsSync(join(context.home, '.agents/skills/install-praxity/SKILL.md')));
+  assert.equal(existsSync(join(context.home, '.claude/skills/install-praxity/SKILL.md')), false);
+  assert.equal(existsSync(join(context.home, '.praxity/toolkit-skills.lock')), false);
+});
 test('canonical adapter generation matches reviewed golden files', t => {
   const { context } = fixture(t);
   const outputs = outputsFor(context);

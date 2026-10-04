@@ -100,10 +100,12 @@ export function installSkills({ base, otherBase, host, outputs }) {
   };
   if (state.owner !== 'praxity-toolkit') throw new Error('Unrecognized skills ownership manifest');
   validateFiles(state.files);
+  const validLock = record => Number.isSafeInteger(record?.pid) && record.pid > 0 && typeof record.token === 'string' && /^[a-f0-9-]{36}$/.test(record.token);
+  if (state.lock && !validLock(state.lock)) throw new Error('Invalid skills lock intent');
   if (state.transaction) {
     const tx = state.transaction;
     validateFiles(tx.previous); validateFiles(tx.next?.files);
-    if (!adapters[tx.next.host] || !['stage', 'remove'].includes(tx.phase) || !Array.isArray(tx.staged) || tx.staged.length !== Object.keys(tx.next.files).length || !Number.isSafeInteger(tx.lock?.pid) || tx.lock.pid <= 0 || typeof tx.lock.token !== 'string') throw new Error('Invalid skills transaction');
+    if (!adapters[tx.next.host] || !['stage', 'remove'].includes(tx.phase) || !Array.isArray(tx.staged) || tx.staged.length !== Object.keys(tx.next.files).length || !validLock(tx.lock)) throw new Error('Invalid skills transaction');
     const seen = new Set();
     for (const entry of tx.staged) {
       contained(base, entry.name, true); contained(base, entry.temp);
@@ -129,26 +131,35 @@ export function installSkills({ base, otherBase, host, outputs }) {
   const lock = contained(base, '.praxity/toolkit-skills.lock');
   const pidFile = contained(base, '.praxity/toolkit-skills.lock/pid');
   const alive = pid => { try { process.kill(pid, 0); return true; } catch (error) { if (error.code === 'ESRCH') return false; throw error; } };
+  const recorded = state.lock ?? state.transaction?.lock;
   if (existsSync(lock)) {
-    const recorded = state.transaction?.lock;
-    if (!recorded || !existsSync(pidFile) || readFileSync(pidFile, 'utf8') !== JSON.stringify(recorded) || readdirSync(lock).length !== 1) throw new Error(`Unowned skills lock preserved: ${lock}`);
+    const names = readdirSync(lock);
+    if (!recorded || names.some(name => name !== 'pid') || (existsSync(pidFile) && !JSON.stringify(recorded).startsWith(readFileSync(pidFile, 'utf8')))) throw new Error(`Unowned skills lock preserved: ${lock}`);
     if (alive(recorded.pid)) throw new Error(`Skills install locked: ${lock}`);
-    unlinkSync(pidFile); rmdirSync(lock);
-  } else if (state.transaction && state.transaction.lock.pid !== process.pid && alive(state.transaction.lock.pid)) throw new Error('Skills transaction is still running');
-  mkdirSync(lock);
+    if (existsSync(pidFile)) unlinkSync(pidFile); rmdirSync(lock);
+  } else if (recorded && recorded.pid !== process.pid && alive(recorded.pid)) throw new Error('Skills transaction is still running');
   const lockRecord = { pid: process.pid, token: randomUUID() };
   const lockBytes = JSON.stringify(lockRecord);
-  writeFileSync(pidFile, lockBytes, { flag: 'wx' });
+  const acquire = () => {
+    // The ledger retains this intent even before the lock directory or PID
+    // exists, including the second acquisition after transaction recovery.
+    writeState({ ...state, lock: lockRecord });
+    mkdirSync(lock);
+    writeFileSync(pidFile, lockBytes, { flag: 'wx', flush: true });
+  };
   const release = () => {
     if (!existsSync(lock)) return;
     contained(base, '.praxity/toolkit-skills.lock/pid');
     if (readFileSync(pidFile, 'utf8') !== lockBytes || readdirSync(lock).length !== 1) throw new Error(`Skills lock changed; preserved: ${lock}`);
     unlinkSync(pidFile); rmdirSync(lock);
   };
-  const checkHash = (name, allowed, absent = false, adapterOnly = true) => {
+  const checkHash = (name, allowed, absent = false, adapterOnly = true, pendingBytes) => {
     const path = contained(base, name, adapterOnly);
     if (!existsSync(path)) { if (absent) return; throw new Error(`Owned adapter changed; missing file: ${path}`); }
-    if (!lstatSync(path).isFile() || !allowed.includes(digest(readFileSync(path)))) throw new Error(`Owned adapter changed; preserve or move it before retrying: ${path}`);
+    if (!lstatSync(path).isFile()) throw new Error(`Owned adapter changed; preserve or move it before retrying: ${path}`);
+    const bytes = readFileSync(path);
+    const partial = pendingBytes && allowed.includes(digest(pendingBytes)) && bytes.length < pendingBytes.length && bytes.equals(pendingBytes.subarray(0, bytes.length));
+    if (!allowed.includes(digest(bytes)) && !partial) throw new Error(`Owned adapter changed; preserve or move it before retrying: ${path}`);
   };
   const finish = tx => {
     const ownedNames = new Set([...Object.keys(tx.previous), ...Object.keys(tx.next.files), ...tx.staged.map(entry => entry.temp)]);
@@ -169,12 +180,18 @@ export function installSkills({ base, otherBase, host, outputs }) {
       const allowed = [tx.previous[name], tx.next.files[name]].filter(Boolean);
       checkHash(name, allowed, tx.phase === 'remove' ? !Object.hasOwn(tx.next.files, name) : !Object.hasOwn(tx.previous, name));
     }
-    for (const entry of tx.staged) checkHash(entry.temp, [tx.next.files[entry.name]], true, false);
+    const generated = outputs[tx.next.host];
+    for (const entry of tx.staged) checkHash(entry.temp, [tx.next.files[entry.name]], true, false, tx.phase === 'stage' ? generated.get(entry.name) : undefined);
     if (tx.phase === 'stage') {
-      const generated = outputs[tx.next.host];
       for (const entry of tx.staged) {
         const path = contained(base, entry.name, true), temp = contained(base, entry.temp), hash = tx.next.files[entry.name];
         if (existsSync(path) && digest(readFileSync(path)) === hash) continue;
+        if (existsSync(temp) && digest(readFileSync(temp)) !== hash) {
+          // Only a recorded temporary holding an exact prefix of the original
+          // output is unfinished. Changed bytes and published files still fail.
+          checkHash(entry.temp, [hash], false, false, generated.get(entry.name));
+          unlinkSync(temp);
+        }
         if (!existsSync(temp)) {
           const bytes = generated.get(entry.name);
           if (!bytes || digest(bytes) !== hash) throw new Error('Interrupted skills switch needs the original adapter content');
@@ -207,11 +224,12 @@ export function installSkills({ base, otherBase, host, outputs }) {
     writeState(tx.next);
   };
   try {
+    acquire();
     if (state.transaction) {
       writeState({ ...state, transaction: { ...state.transaction, lock: lockRecord } });
       finish(state.transaction);
       // Recovery completed its previous switch; acquire a new lock for this one.
-      mkdirSync(lock); writeFileSync(pidFile, lockBytes, { flag: 'wx' });
+      acquire();
     }
     const desired = outputs[host];
     for (const [name, hash] of Object.entries(state.files)) checkHash(name, [hash]);
@@ -243,7 +261,13 @@ export function installSkills({ base, otherBase, host, outputs }) {
     writeState({ ...state, transaction });
     finish(transaction);
     return { host, files: Object.keys(hashes), pluginDirectory: host === 'claude' ? join(base, '.claude/plugins/praxity') : null };
-  } finally { release(); }
+  } finally {
+    release();
+    if (!state.transaction && state.lock?.token === lockRecord.token) {
+      const { lock: _lock, ...next } = state;
+      writeState(next);
+    }
+  }
 }
 
 export function skillPresence({ base, host, names }) {
