@@ -74,7 +74,8 @@ test('consent state refuses a symlink and preserves the external file', async t 
 test('Studio process preserves empty, quoted, Unicode and shell-like arguments; doctor JSON validates', async t => {
   const { context } = fixture(t), argsFile = join(context.root, 'studio-args.json');
   fakeTool(context, 'studio', `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify(process.argv.slice(2))); process.exitCode=7;`);
-  const expected = ['studio', 'path with spaces', '--no-open', '', "apostrophe's", 'literal $() ;', '--', '?'];
+  const expected = ['studio', 'path with spaces', '--no-open', '', "apostrophe's", 'literal $() ;', '--', 'café/日本語'];
+  assert.ok(expected.some(argument => /[^\x00-\x7f]/.test(argument)), 'fixture must include a real non-ASCII argument');
   assert.equal(await runCli(expected, context), 7);
   assert.deepEqual(JSON.parse(readFileSync(argsFile)), expected);
   context.state.installed = [];
