@@ -181,9 +181,10 @@ Typst 0.15.1 hashes came from [official release asset metadata](https://api.gith
 `docs/provenance/` preserves the signed Node list, public key and extracted
 checksums. Neither origin settles signing, Gatekeeper or clean-Mac acceptance.
 
-TODO: owner chooses the licence for toolkit scripts and toolkit skills before
-publication. No toolkit licence is declared yet. Tools retain PolyForm Perimeter
-1.0.1 and their third-party notices; adapters do not relicense them.
+The toolkit's own scripts, skills and adapters are MIT-licensed (see `LICENSE`).
+The tools it installs keep their own licences: Studio, Check, Trace, Print and
+Import are under PolyForm Perimeter 1.0.1, with their third-party notices inside
+each archive. Installing or adapting a tool does not relicense it.
 
 ## Paste into your agent
 
