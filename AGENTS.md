@@ -9,7 +9,7 @@ their packaged skills without rewriting them. Toolkit skills live in `skills/`.
 Change adapters through the generator, then update and review the golden files.
 
 Use `node --test` and `npm run validate`. Installer tests use local archives and
-temporary homes only. Real installs require the self-hosted Apple Silicon Mac.
+temporary homes only. Real installs run in CI on GitHub-hosted macOS and on the owner's Mac.
 Keep unpublished artifacts explicit. Never infer release URLs or checksums.
 
 Preserve unowned files and modified adapter files. Keep activation atomic and

@@ -206,6 +206,6 @@ node --test
 
 Offline installer tests use fake archives, temporary homes and a platform
 override. On Windows they run under Git Bash. Golden adapter files record
-reviewed content hashes. CI uses `ubicloud-standard-2` for offline tests and the
-self-hosted `[self-hosted, macOS, ARM64, praxity-release]` runner for tests and a
-real install in a temporary home. Real macOS acceptance has not run on the NUC.
+reviewed content hashes. CI runs the offline tests on GitHub-hosted Ubuntu, and the
+tests plus a real install in a temporary home on GitHub-hosted Apple Silicon macOS.
+No self-hosted machine runs code from this public repository's pull requests.
