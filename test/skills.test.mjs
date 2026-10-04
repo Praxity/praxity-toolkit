@@ -114,3 +114,18 @@ test('launcher installs selected scope; doctor checks picker and plugin files', 
   assert.equal(result.items.find(item => item.id === 'host.t3.project').status, 'ok');
   assert.equal(result.items.find(item => item.id === 'host.claude.project').status, 'not-installed');
 });
+
+for (const name of ['.claude/skills/../../Documents/notes.txt', '.agents/skills/../../../Documents/notes.txt', '/Documents/notes.txt', 'C:/Documents/notes.txt', '.claude/skills/../skills/studio-editor/SKILL.md']) test(`skills ledger refuses noncanonical adapter path ${name}`, t => {
+  const { context } = fixture(t), victim = join(context.home, 'Documents/notes.txt');
+  mkdirSync(join(context.home, 'Documents')); writeFileSync(victim, 'USER FILE');
+  mkdirSync(join(context.home, '.praxity'));
+  writeFileSync(join(context.home, '.praxity/toolkit-skills.json'), JSON.stringify({ owner: 'praxity-toolkit', files: { [name]: createHash('sha256').update('USER FILE').digest('hex') } }));
+  assert.throws(() => installSkills({ base: context.home, host: 't3', outputs: outputsFor(context) }), /Unsafe ownership path/);
+  assert.equal(readFileSync(victim, 'utf8'), 'USER FILE');
+  assert.equal(existsSync(join(context.home, '.claude/skills/install-praxity/SKILL.md')), false);
+});
+test('dangling symlink in an adapter ancestor is refused before mutations', t => {
+  const { context } = fixture(t);
+  symlinkSync(join(context.root, 'missing'), join(context.home, '.claude'), process.platform === 'win32' ? 'junction' : 'dir');
+  assert.throws(() => installSkills({ base: context.home, host: 't3', outputs: outputsFor(context) }), /symlink refused/);
+});

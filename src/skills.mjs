@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, readFileSync, readdirSync, mkdirSync, writeFileSync, unlinkSync, rmdirSync, renameSync } from 'node:fs';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { existsSync, lstatSync, readFileSync, readdirSync, mkdirSync, writeFileSync, unlinkSync, rmdirSync, renameSync, realpathSync } from 'node:fs';
+import { dirname, join, relative, resolve, sep, isAbsolute, win32 } from 'node:path';
 
 export const adapters = {
   t3: { skills: '.claude/skills', plugin: null },
@@ -56,13 +56,21 @@ export function buildAdapters({ source, tools = [], packVersion }) {
   }));
 }
 
-function contained(base, name) {
+function contained(base, name, adapterOnly = false) {
+  if (typeof name !== 'string' || isAbsolute(name) || win32.isAbsolute(name) || name.includes('\\') || name.split('/').some(part => !part || part === '.' || part === '..')) throw new Error(`Unsafe ownership path: ${name}`);
+  if (adapterOnly && !Object.values(adapters).some(adapter => name.startsWith(`${adapter.skills}/`) || name === adapter.plugin)) throw new Error(`Unsafe ownership path: ${name}`);
   const target = resolve(base, name);
   const rel = relative(base, target);
-  if (!rel || rel.startsWith(`..${sep}`) || rel === '..' || resolve(name) === name) throw new Error(`Unsafe ownership path: ${name}`);
+  if (!rel || rel.startsWith(`..${sep}`) || rel === '..') throw new Error(`Unsafe ownership path: ${name}`);
   let cursor = target;
-  while (cursor !== resolve(base)) {
-    if (existsSync(cursor) && lstatSync(cursor).isSymbolicLink()) throw new Error(`Adapter symlink refused: ${cursor}`);
+  while (cursor !== base) {
+    let stat;
+    try { stat = lstatSync(cursor); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    if (stat?.isSymbolicLink()) throw new Error(`Adapter symlink refused: ${cursor}`);
+    if (stat) {
+      const resolved = relative(base, realpathSync(cursor));
+      if (resolved === '..' || resolved.startsWith(`..${sep}`) || isAbsolute(resolved)) throw new Error(`Unsafe ownership path: ${name}`);
+    }
     cursor = dirname(cursor);
   }
   return target;
@@ -70,7 +78,7 @@ function contained(base, name) {
 
 export function installSkills({ base, otherBase, host, outputs }) {
   if (!adapters[host]) throw new Error('Host must be t3, claude or codex');
-  base = resolve(base);
+  base = realpathSync(base);
   if (otherBase && resolve(otherBase) !== base && existsSync(statePath(otherBase))) throw new Error('Toolkit skills already use the other scope. Use that scope to avoid competing copies.');
   if (otherBase && resolve(otherBase) !== base) {
     for (const files of Object.values(outputs)) for (const name of files.keys()) {
@@ -87,11 +95,11 @@ export function installSkills({ base, otherBase, host, outputs }) {
     const desired = outputs[host];
     for (const [name, hash] of Object.entries(state.files)) {
       if (!Object.values(adapters).some(adapter => name.startsWith(`${adapter.skills}/`) || name === adapter.plugin) || !/^[a-f0-9]{64}$/.test(hash)) throw new Error(`Unsafe ownership path or hash: ${name}`);
-      const path = contained(base, name);
+      const path = contained(base, name, true);
       if (!existsSync(path) || digest(readFileSync(path)) !== hash) throw new Error(`Owned adapter changed; preserve or move it before retrying: ${path}`);
     }
     for (const name of desired.keys()) {
-      const path = contained(base, name);
+      const path = contained(base, name, true);
       if (existsSync(path) && !Object.hasOwn(state.files, name)) throw new Error(`Unowned adapter file; refusing overwrite: ${path}`);
     }
     // Preflight every host, including disabled adapters, before writing anything.
@@ -110,10 +118,10 @@ export function installSkills({ base, otherBase, host, outputs }) {
       const key = `.claude/plugins/praxity/${file}`;
       if (!Object.hasOwn(state.files, key)) throw new Error(`Unowned competing plugin file: ${join(pluginRoot, file)}`);
     }
-    for (const name of state.files ? Object.keys(state.files) : []) if (!desired.has(name)) unlinkSync(contained(base, name));
+    for (const name of state.files ? Object.keys(state.files) : []) if (!desired.has(name)) unlinkSync(contained(base, name, true));
     const hashes = {};
     for (const [name, bytes] of desired) {
-      const path = contained(base, name);
+      const path = contained(base, name, true);
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(`${path}.praxity-tmp`, bytes, { flag: 'wx' });
       renameSync(`${path}.praxity-tmp`, path);
