@@ -15,6 +15,18 @@ Praxity's tools execute locally. The chosen host and model provider control
 telemetry and what they transmit. An editor capability URL can enter the host's
 tool transcript.
 
+## Try it
+
+On an Apple Silicon Mac, one command downloads the toolkit, installs the pack, runs
+the doctor and opens Studio's editor in Safari on a copy of the sample course:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Praxity/praxity-toolkit/main/try.sh | sh
+```
+
+Read [`try.sh`](try.sh) first if you prefer; it touches only `~/praxity-toolkit-main`,
+`~/.praxity` and `~/praxity-trial-course`. Press Ctrl+C to stop Studio.
+
 ## Install
 
 Download this repository, review `install.sh` and `pack.json`, then run the
