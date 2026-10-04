@@ -9,15 +9,20 @@ import { gzipSync } from 'node:zlib';
 import { fixture, repository, examplePack } from './helpers.mjs';
 
 import { installation, shell, posix, quote, archive } from './installer-fixture.mjs';
+import { installationPlan } from '../src/manifest.mjs';
 
 const passed = result => assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 test('POSIX bootstrap fresh install and idempotent rerun, with spaces and no profile edits', t => {
   const setup = installation(t);
+  const plan = installationPlan(setup.pack, 'darwin-arm64');
+  assert.deepEqual(plan.map(item => item.id), ['node', 'typst', 'studio', 'trace', 'print']);
+  for (const item of plan) assert.equal(new URL(item.url).protocol, 'file:');
   writeFileSync(join(setup.home, '.profile'), 'User profile\n');
   writeFileSync(join(setup.home, 'AGENTS.md'), 'User instructions\n');
   passed(setup.install());
   const current = join(setup.toolkit, '0.1.0');
   assert.ok(existsSync(join(current, 'state.json')));
+  assert.deepEqual(JSON.parse(readFileSync(join(current, 'state.json'))).installed, ['studio', 'trace', 'print']);
   assert.ok(existsSync(join(current, 'tools/studio/praxity.mjs')));
   assert.equal(existsSync(join(current, 'tools/check')), false);
   const before = readFileSync(join(current, 'state.json'), 'utf8');

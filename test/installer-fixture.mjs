@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync, symlinkSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { fixture, repository, examplePack } from './helpers.mjs';
@@ -23,6 +23,10 @@ export function installation(t, options = {}) {
   const home = options.homeName ? join(root, options.homeName) : originalHome;
   if (options.homeName) mkdirSync(home);
   const pack = examplePack();
+  pack.platforms = ['darwin-arm64'];
+  for (const artifact of [...Object.values(pack.runtimes), ...pack.tools]) {
+    artifact.archives = { 'darwin-arm64': artifact.archives['darwin-arm64'] };
+  }
   const runtime = join(root, 'fake node');
   mkdirSync(join(runtime, 'bin'), { recursive: true });
   const binary = process.execPath.replaceAll('\\', '/');
@@ -39,12 +43,18 @@ export function installation(t, options = {}) {
   writeFileSync(join(typst, 'LICENSE'), 'Typst fixture licence\n');
   pack.runtimes.typst.archives['darwin-arm64'] = archive(typst, join(root, 'typst archive.tar.gz'));
   if (options.tool !== false) {
-    const studio = join(root, 'fake studio'); mkdirSync(studio);
-    writeFileSync(join(studio, 'praxity.mjs'), 'console.log(JSON.stringify(process.argv.slice(2)));\n');
-    writeFileSync(join(studio, 'THIRD-PARTY-NOTICES.md'), 'Tool legal fixture\n');
-    mkdirSync(join(studio, 'skill'));
-    writeFileSync(join(studio, 'skill/SKILL.md'), '---\nname: prax-format\ndescription: Write a course.\n---\nTool-owned skill.\n');
-    pack.tools[0].archives['darwin-arm64'] = archive(studio, join(root, 'studio archive.tar.gz'));
+    for (const id of ['studio', 'trace', 'print']) {
+      const tool = pack.tools.find(tool => tool.id === id);
+      const payload = join(root, `fake ${id}`);
+      mkdirSync(dirname(join(payload, tool.entry)), { recursive: true });
+      writeFileSync(join(payload, tool.entry), 'console.log(JSON.stringify(process.argv.slice(2)));\n');
+      mkdirSync(dirname(join(payload, tool.notices)), { recursive: true });
+      writeFileSync(join(payload, tool.notices), 'Tool legal fixture\n');
+      mkdirSync(join(payload, tool.skillPath), { recursive: true });
+      const name = id === 'studio' ? 'prax-format' : `fixture-${id}`;
+      writeFileSync(join(payload, tool.skillPath, 'SKILL.md'), `---\nname: ${name}\ndescription: Write a course.\n---\nTool-owned skill.\n`);
+      tool.archives['darwin-arm64'] = archive(payload, join(root, `${id} archive.tar.gz`));
+    }
   }
   const manifest = join(root, 'manifest file.json');
   const save = () => writeFileSync(manifest, JSON.stringify(pack, null, 2));

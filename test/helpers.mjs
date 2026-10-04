@@ -4,7 +4,17 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const repository = fileURLToPath(new URL('..', import.meta.url));
-export const examplePack = () => JSON.parse(readFileSync(join(repository, 'pack.json'), 'utf8'));
+export const realPack = () => JSON.parse(readFileSync(join(repository, 'pack.json'), 'utf8'));
+export function examplePack() {
+  const pack = realPack();
+  // Tests choose which tools to publish, independently of release availability.
+  for (const tool of pack.tools) {
+    for (const platform of Object.keys(tool.archives)) {
+      tool.archives[platform] = { status: 'unpublished', reason: 'Not published in this test fixture.' };
+    }
+  }
+  return pack;
+}
 export function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'praxity toolkit '));
   t.after(() => rmSync(root, { recursive: true, force: true }));

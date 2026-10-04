@@ -2,11 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { examplePack, repository } from './helpers.mjs';
+import { examplePack, realPack, repository } from './helpers.mjs';
 import { validateManifest, installationPlan } from '../src/manifest.mjs';
 import { loadSchema, validateSchema } from '../src/schema.mjs';
 
-test('real unpublished pack validates and plans only published runtimes', () => {
+test('real pack validates and every published archive has a complete contract', () => {
+  const pack = realPack();
+  assert.deepEqual(validateSchema(pack, loadSchema('pack')), []);
+  assert.deepEqual(validateManifest(pack), []);
+  for (const artifact of [...Object.values(pack.runtimes), ...pack.tools]) {
+    for (const [platform, archive] of Object.entries(artifact.archives)) {
+      if (archive.status !== 'published') continue;
+      for (const field of ['url', 'sha256', 'format', 'stripComponents']) {
+        assert.ok(Object.hasOwn(archive, field), `${artifact.id ?? artifact.version}/${platform}: missing ${field}`);
+      }
+    }
+  }
+});
+test('unpublished fixture tools are omitted from the installation plan', () => {
   const pack = examplePack();
   assert.deepEqual(validateManifest(pack), []);
   assert.deepEqual(installationPlan(pack, 'darwin-arm64').map(item => item.id), ['node', 'typst']);
@@ -16,10 +29,12 @@ test('published archive has a complete executable contract', () => {
   const pack = examplePack();
   pack.tools[0].archives['darwin-arm64'] = { status: 'published', url: 'file:///tmp/tool%20archive.tar.gz', sha256: 'a'.repeat(64), format: 'tar.gz', stripComponents: 1 };
   assert.deepEqual(validateManifest(pack), []);
-  assert.equal(installationPlan(pack, 'darwin-arm64').at(-1).entry, 'praxity.mjs');
+  const plan = installationPlan(pack, 'darwin-arm64');
+  assert.deepEqual(plan.map(item => item.id), ['node', 'typst', 'studio']);
+  assert.equal(plan.find(item => item.id === 'studio').entry, 'praxity.mjs');
 });
 test('runtime hashes match the preserved official release evidence', () => {
-  const pack = examplePack();
+  const pack = realPack();
   const checksums = readFileSync(join(repository, 'docs/provenance/node-v24.21.0-SHASUMS256.txt'), 'utf8');
   const typst = JSON.parse(readFileSync(join(repository, 'docs/provenance/typst-v0.15.1-assets.json'), 'utf8'));
   for (const archive of Object.values(pack.runtimes.node.archives)) {
