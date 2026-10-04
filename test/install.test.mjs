@@ -263,3 +263,35 @@ test('cache partial symlink cannot overwrite its outside target', t => {
   const r = setup.install(); assert.notEqual(r.status, 0);
   assert.equal(readFileSync(victim, 'utf8'), 'USER FILE');
 });
+
+function remoteFixture(t, reviewed = false) {
+  const setup = installation(t); setup.pack.version = '9.9.9'; setup.save();
+  const bin = join(setup.root, 'curl-mock'); mkdirSync(bin);
+  const realCurl = shell('command -v curl').stdout.trim();
+  const manifest = reviewed ? join(repository, 'pack.json') : setup.manifest;
+  writeFileSync(join(bin, 'curl'), `#!/bin/sh\nnext=\noutput=\nlast=\nfor arg do\n  if [ "$next" = output ]; then output=$arg; next=; fi\n  if [ "$arg" = --output ]; then next=output; fi\n  last=$arg\ndone\ncase "$last" in\n  https://fixture.invalid/manifest.json) cp ${quote(posix(manifest))} "$output";;\n  file://*) exec ${quote(realCurl)} "$@";;\n  *) echo 'network disallowed in fixture' >&2; exit 98;;\nesac\n`, { mode: 0o755 });
+  const init = setup.env.BASH_ENV ?? posix(join(setup.root, 'bash-env'));
+  const previous = existsSync(join(setup.root, 'bash-env')) ? readFileSync(join(setup.root, 'bash-env'), 'utf8') : '';
+  writeFileSync(join(setup.root, 'bash-env'), previous + `export PATH=${quote(posix(bin))}:"$PATH"\n`);
+  setup.env.BASH_ENV = init;
+  return setup;
+}
+for (const digest of [null, 'a'.repeat(64)]) test(`remote replacement manifest with ${digest ? 'wrong' : 'no'} reviewed digest cannot select Node`, t => {
+  const setup = remoteFixture(t);
+  const r = setup.install(`--manifest https://fixture.invalid/manifest.json${digest ? ` --manifest-sha256 ${digest}` : ''}`);
+  assert.notEqual(r.status, 0); assert.match(r.stderr, /Manifest SHA-256 mismatch|reviewed digest/);
+  assert.equal(existsSync(join(setup.toolkit, '.cache')), false);
+  assert.equal(existsSync(join(setup.toolkit, 'active')), false);
+});
+test('remote manifest with the supplied reviewed digest installs local fixture archives', t => {
+  const setup = remoteFixture(t), digest = createHash('sha256').update(readFileSync(setup.manifest)).digest('hex');
+  passed(setup.install(`--manifest https://fixture.invalid/manifest.json --manifest-sha256 ${digest}`));
+  assert.equal(readFileSync(join(setup.toolkit, 'active'), 'utf8').split('\n')[0], '9.9.9');
+});
+test('remote bytes matching the reviewed checkout manifest pass trust preflight', t => {
+  const setup = remoteFixture(t, true);
+  const r = setup.install('--manifest https://fixture.invalid/manifest.json');
+  assert.notEqual(r.status, 0); assert.match(r.stderr, /network disallowed in fixture/);
+  assert.doesNotMatch(r.stderr, /Manifest SHA-256 mismatch/);
+  assert.ok(existsSync(join(setup.toolkit, '.cache')));
+});

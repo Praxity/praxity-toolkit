@@ -6,12 +6,14 @@ ROOT="$HOME/.praxity/toolkit"
 BIN="$HOME/.praxity/bin"
 ACTION=install
 MANIFEST=
+MANIFEST_DIGEST=
 PLATFORM=
 die() { printf '%s\n' "$*" >&2; exit 1; }
 while [ "$#" -gt 0 ]; do
   case "$1" in
     install|rollback|uninstall) ACTION=$1; shift ;;
     --manifest) [ "$#" -ge 2 ] || die 'Missing --manifest value'; MANIFEST=$2; shift 2 ;;
+    --manifest-sha256) [ "$#" -ge 2 ] || die 'Missing --manifest-sha256 value'; MANIFEST_DIGEST=$2; shift 2 ;;
     --platform) [ "$#" -ge 2 ] || die 'Missing --platform value'; PLATFORM=$2; shift 2 ;;
     *) die "Unknown argument: $1" ;;
   esac
@@ -135,6 +137,15 @@ if [ -z "$MANIFEST" ]; then capture "$MANIFEST_FILE" cat "$SCRIPT_DIR/pack.json"
 else
   case "$MANIFEST" in https://*|file:///*) ;; *) die 'Manifest must use https:// or file:///' ;; esac
   fetch "$MANIFEST_FILE" "$MANIFEST" || die 'Manifest download failed; rerun the same command after resolving it'
+fi
+if [ -n "$MANIFEST_DIGEST" ]; then
+  [ "${#MANIFEST_DIGEST}" = 64 ] || die 'Invalid reviewed manifest digest'
+  case "$MANIFEST_DIGEST" in *[!a-f0-9]*) die 'Invalid reviewed manifest digest' ;; esac
+else
+  case "$MANIFEST" in https://*) MANIFEST_DIGEST=$(sha256 "$SCRIPT_DIR/pack.json") ;; esac
+fi
+if [ -n "$MANIFEST_DIGEST" ]; then
+  [ "$(sha256 "$MANIFEST_FILE")" = "$MANIFEST_DIGEST" ] || die 'Manifest SHA-256 mismatch. Supply the reviewed digest with --manifest-sha256 before selecting Node.'
 fi
 capture "$BOOTSTRAP_TSV" awk -f "$SCRIPT_DIR/scripts/bootstrap-json.awk" "$MANIFEST_FILE"
 get() { awk -F '\t' -v key="$1" '$1 == key {print $2}' "$BOOTSTRAP_TSV"; }

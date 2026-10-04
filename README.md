@@ -24,7 +24,7 @@ Review `install.sh` and `pack.json`, then run from that checkout on the Mac:
 sh install.sh
 ```
 
-The bootstrap needs `curl`, `tar`, `awk`, `mktemp` and `shasum` or `sha256sum`. It does not
+The bootstrap needs `curl`, `tar`, `awk`, `mktemp` and `shasum`. It does not
 need an existing Node or administrator privileges. It installs to
 `~/.praxity/toolkit/<pack-version>/` and creates `~/.praxity/bin/praxity`.
 Add the line it prints to your shell configuration yourself:
@@ -38,20 +38,20 @@ The launcher selects the active pack and uses its private Node. It sets Print's
 `PRAXITY_PRINT_TYPST` and Import's `PRAXITY_CLI` to absolute pack paths. Studio's
 present standalone publisher still needs a supported shared-Typst option.
 
-Trust the reviewed checkout as the source of the bootstrap and manifest.
-The script checks archive hashes against your selected manifest.
-It does not verify a remote manifest's signature.
-`--manifest https://…` or `--manifest file:///…` explicitly chooses another trust
-root. Review it first. No toolkit release URL is assumed in this scaffold.
+The reviewed checkout supplies the bootstrap and default manifest.
+HTTPS manifests must match `--manifest-sha256 <reviewed-sha256>` or the SHA-256 of
+that checkout's `pack.json`, checked before Node is selected.
+Review local `file:///...` manifests directly; archive hashes check artifact
+integrity against that trusted manifest.
 
 ```sh
 ~/.praxity/bin/praxity setup
 ~/.praxity/bin/praxity doctor --json
 ~/.praxity/bin/praxity version
-~/.praxity/bin/praxity check …
-~/.praxity/bin/praxity trace …
-~/.praxity/bin/praxity print …
-~/.praxity/bin/praxity import …
+~/.praxity/bin/praxity check ...
+~/.praxity/bin/praxity trace ...
+~/.praxity/bin/praxity print ...
+~/.praxity/bin/praxity import ...
 ~/.praxity/bin/praxity studio . --no-open
 ```
 
@@ -65,7 +65,8 @@ unchanged. The toolkit reserves `setup`, `doctor`, `version`, `rollback`,
 
 Rerun the same installer after a failed download or interruption. Complete
 verified archives remain in the cache; partial downloads restart. A stale lock
-is reclaimed only if its recorded process is dead. A live lock stops the run.
+is reclaimed only if the ownership ledger records its creation and its process
+is dead. A live lock stops the run.
 Checksum failures publish no version or launcher. Installed file damage and a
 different manifest using the same pack version are refused. Resolve the reported
 damage or select a new version; the installer does not silently replace it.
@@ -81,7 +82,7 @@ sh /absolute/path/to/praxity-toolkit/install.sh uninstall
 
 Uninstall removes owned pack versions, staged downloads and its unchanged
 launcher. It preserves optional tool components, generated host skills and
-unrelated `~/.praxity` data. Modified or unowned launchers and pack directories
+unrelated `~/.praxity` data. User additions inside packs, caches and stages, and modified or unowned files
 are refused before removal. Host skills retain their separate ownership record.
 
 ## Skills
