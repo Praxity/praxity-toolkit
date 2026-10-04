@@ -93,28 +93,31 @@
   "tools": [
     {
       "id": "studio",
-      "version": "0.3.0",
+      "version": "0.3.0-main.0e6581e9",
       "entry": "praxity.mjs",
       "runner": "node",
       "license": "PolyForm Perimeter 1.0.1",
-      "notices": "THIRD-PARTY-NOTICES.md",
-      "skillPath": "skill",
+      "notices": "legal/LICENSING.md",
+      "skillPath": "prax-format/skill",
       "archives": {
         "darwin-arm64": {
-          "status": "unpublished",
-          "reason": "Desktop v0.3.0 is a draft with no CLI assets. Publish the browser editor, skill and legal payload."
+          "status": "published",
+          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0-rc.1/praxity-studio-cli-0.3.0-main.0e6581e9-darwin-arm64.tar.gz",
+          "sha256": "dd1924bcbce6d1a6f52260e32222d5afdfe3837cb48cf25f06d7c409cd6da0e4",
+          "format": "tar.gz",
+          "stripComponents": 1
         },
         "darwin-x64": {
           "status": "unpublished",
-          "reason": "Desktop v0.3.0 is a draft with no CLI assets. Publish the browser editor, skill and legal payload."
+          "reason": "Studio CLI candidates are built for macOS on the self-hosted Mac; only darwin-arm64 is in the trial."
         },
         "linux-x64": {
           "status": "unpublished",
-          "reason": "Desktop v0.3.0 is a draft with no CLI assets. Publish the browser editor, skill and legal payload."
+          "reason": "Studio CLI candidates are built for macOS on the self-hosted Mac; only darwin-arm64 is in the trial."
         },
         "win32-x64": {
           "status": "unpublished",
-          "reason": "Desktop v0.3.0 is a draft with no CLI assets. Publish the browser editor, skill and legal payload."
+          "reason": "Studio CLI candidates are built for macOS on the self-hosted Mac; only darwin-arm64 is in the trial."
         }
       }
     },
