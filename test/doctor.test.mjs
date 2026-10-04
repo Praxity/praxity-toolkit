@@ -71,6 +71,23 @@ test('pin mismatch and process failure are bounded diagnostic failures', t => {
   assert.equal(result.items[0].status, 'failed'); assert.equal(result.items[1].message, 'Timed out');
 });
 
+test('an unusable system Java, such as the macOS stub, is not installed rather than failed', t => {
+  const context = prepared(t);
+  const check = { components: [{ id: 'java', usable: false, source: 'system', path: '/usr/bin/java', version: null, inventory: 'unmanaged', reason: 'Java 17 or newer is not installed; checks not run. Run check setup pdf.' }], exitCode: 1 };
+  const report = doctor(context, runner(context, check));
+  assert.equal(report.items.find(item => item.id === 'tool.check.java').status, 'not-installed');
+  assert.equal(report.exitCode, 0);
+  writeFileSync(join(context.home, '.praxity/toolkit-state/declined.json'), '{"check":["java"]}');
+  assert.equal(doctor(context, runner(context, check)).items.find(item => item.id === 'tool.check.java').status, 'declined');
+});
+test('an explicitly selected component that does not work still fails', t => {
+  const context = prepared(t);
+  const check = { components: [{ id: 'java', usable: false, source: 'explicit', path: '/opt/java/bin/java', version: '11.0.2', inventory: 'unmanaged', reason: 'Java selected by JAVA_HOME is unusable' }], exitCode: 1 };
+  const report = doctor(context, runner(context, check));
+  assert.equal(report.items.find(item => item.id === 'tool.check.java').status, 'failed');
+  assert.equal(report.exitCode, 1);
+});
+
 for (const inventory of ['intact', 'damaged', 'unmanaged']) test(`past refusal cannot mask a present ${inventory} component failure`, t => {
   const context = prepared(t);
   writeFileSync(join(context.home, '.praxity/toolkit-state/declined.json'), '{"check":["browser"]}');

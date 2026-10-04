@@ -50,10 +50,14 @@ export function doctor(context, run = probeProcess) {
         } catch (error) { items.push(item(`tool.${tool.id}`, 'failed', error.message, `praxity setup ${tool.id}`)); continue; }
         for (const component of owned.components) {
           const fix = `praxity setup ${tool.id} ${component.id}`;
+          // An unusable system copy (macOS's /usr/bin/java stub, an old Java) is not the pack's to
+          // repair: setup installs a managed one that takes precedence, so it counts as missing.
+          const missing = component.source === null && component.inventory === 'absent'
+            || component.source === 'system' && component.inventory !== 'damaged';
           const status = component.usable ? 'ok'
             : component.inventory === 'damaged' ? 'failed'
-            : component.inventory === 'absent' && declined[tool.id]?.includes(component.id) ? 'declined'
-            : component.source === null && component.inventory === 'absent' ? 'not-installed' : 'failed';
+            : missing && declined[tool.id]?.includes(component.id) ? 'declined'
+            : missing ? 'not-installed' : 'failed';
           items.push(item(`tool.${tool.id}.${component.id}`, status, component.reason ?? (component.usable ? `Found ${component.version ?? 'component'}` : status === 'declined' ? 'Optional download was declined' : 'Component is unavailable'), status === 'ok' ? '' : fix));
         }
       } else {
