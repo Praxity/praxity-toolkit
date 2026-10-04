@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, watch } from 'node:fs';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
+import { spawnSync, spawn } from 'node:child_process';
 import { buildAdapters, installSkills } from '../src/skills.mjs';
 import { runCli } from '../src/cli.mjs';
 import { doctor } from '../src/doctor.mjs';
@@ -128,4 +129,48 @@ test('dangling symlink in an adapter ancestor is refused before mutations', t =>
   const { context } = fixture(t);
   symlinkSync(join(context.root, 'missing'), join(context.home, '.claude'), process.platform === 'win32' ? 'junction' : 'dir');
   assert.throws(() => installSkills({ base: context.home, host: 't3', outputs: outputsFor(context) }), /symlink refused/);
+});
+
+for (const obstacle of ['.praxity/toolkit-skills.json.tmp', '.claude/plugins/praxity/skills/install-praxity/SKILL.md.praxity-tmp']) test(`switch preflights ${obstacle} and leaves the previous adapter retryable`, t => {
+  const { context } = fixture(t), options = { base: context.home, outputs: outputsFor(context) };
+  installSkills({ ...options, host: 't3' });
+  const file = join(context.home, obstacle); mkdirSync(join(file, '..'), { recursive: true }); writeFileSync(file, 'USER FILE');
+  const before = readFileSync(join(context.home, '.praxity/toolkit-skills.json'), 'utf8');
+  assert.throws(() => installSkills({ ...options, host: 'claude' }));
+  assert.equal(readFileSync(file, 'utf8'), 'USER FILE');
+  assert.equal(readFileSync(join(context.home, '.praxity/toolkit-skills.json'), 'utf8'), before);
+  assert.ok(existsSync(join(context.home, '.claude/skills/install-praxity/SKILL.md')));
+});
+
+for (const phase of ['stage', 'remove']) test(`interrupted adapter switch recovers after ${phase} without competing copies`, async t => {
+  const { context } = fixture(t);
+  const references = join(context.root, 'skills/install-praxity/references'); mkdirSync(references);
+  for (let i = 0; i < 300; i++) writeFileSync(join(references, `${i}.txt`), `fixture ${i}\n`);
+  const options = { base: context.home, outputs: outputsFor(context) };
+  installSkills({ ...options, host: 't3' });
+  const module = process.env.TOOLKIT_SKILLS_MODULE ?? join(repository, 'src/skills.mjs');
+  const code = `import { buildAdapters, installSkills } from ${JSON.stringify(pathToFileURL(module).href)};
+    installSkills({base:${JSON.stringify(context.home)},host:'codex',outputs:buildAdapters({source:${JSON.stringify(join(context.root, 'skills'))},packVersion:'0.1.0'})});`;
+  let killed = false, stderr = '';
+  const child = spawn(process.execPath, ['--input-type=module', '-e', code], { stdio: ['ignore', 'ignore', 'pipe'] });
+  child.stderr.on('data', bytes => { stderr += bytes; });
+  const watcher = watch(join(context.home, '.praxity'), (_event, name) => {
+    if (killed || name !== 'toolkit-skills.json') return;
+    const state = JSON.parse(readFileSync(join(context.home, '.praxity/toolkit-skills.json'), 'utf8'));
+    if (state.transaction?.phase === phase) { killed = true; child.kill('SIGKILL'); }
+  });
+  try {
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('Switch child did not finish')); }, 20_000);
+      child.on('error', error => { clearTimeout(timeout); reject(error); });
+      child.on('exit', () => { clearTimeout(timeout); resolve(); });
+    });
+  } finally { watcher.close(); }
+  assert.ok(killed, `Did not observe durable ${phase} transaction: ${stderr}`);
+  installSkills({ ...options, host: 'codex' });
+  const state = JSON.parse(readFileSync(join(context.home, '.praxity/toolkit-skills.json'), 'utf8'));
+  assert.equal(state.host, 'codex'); assert.equal(state.transaction, undefined);
+  assert.ok(existsSync(join(context.home, '.agents/skills/install-praxity/SKILL.md')));
+  assert.equal(existsSync(join(context.home, '.claude/skills/install-praxity/SKILL.md')), false);
+  assert.equal(existsSync(join(context.home, '.praxity/toolkit-skills.lock')), false);
 });
