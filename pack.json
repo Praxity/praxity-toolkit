@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "0.1.0",
+  "version": "0.1.0-rc.2",
   "platforms": [
     "darwin-arm64"
   ],
@@ -93,7 +93,7 @@
   "tools": [
     {
       "id": "studio",
-      "version": "0.3.0-main.0e6581e9",
+      "version": "0.3.0-main.236ea135",
       "entry": "praxity.mjs",
       "runner": "node",
       "license": "PolyForm Perimeter 1.0.1",
@@ -102,8 +102,8 @@
       "archives": {
         "darwin-arm64": {
           "status": "published",
-          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0-rc.1/praxity-studio-cli-0.3.0-main.0e6581e9-darwin-arm64.tar.gz",
-          "sha256": "dd1924bcbce6d1a6f52260e32222d5afdfe3837cb48cf25f06d7c409cd6da0e4",
+          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0-rc.2/praxity-studio-cli-0.3.0-main.236ea135-darwin-arm64.tar.gz",
+          "sha256": "fc4fe2310df57d997d332eb89183460e900f0393e1d61aa57e88e2368e0a5e68",
           "format": "tar.gz",
           "stripComponents": 1
         },
@@ -228,20 +228,23 @@
       "skillPath": "skill",
       "archives": {
         "darwin-arm64": {
-          "status": "unpublished",
-          "reason": "No portable packaging yet. Add packaging, skill and legal payload, then publish archives."
+          "status": "published",
+          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0-rc.2/praxity-import-0.1.0.tar.gz",
+          "sha256": "3f2483bd4ad25034ac445562e9170d7d0d1c635fd30dc661cc5ece1d5641576f",
+          "format": "tar.gz",
+          "stripComponents": 1
         },
         "darwin-x64": {
           "status": "unpublished",
-          "reason": "No portable packaging yet. Add packaging, skill and legal payload, then publish archives."
+          "reason": "Releases have no archives. Archive the pnpm package output with skill and legal payload."
         },
         "linux-x64": {
           "status": "unpublished",
-          "reason": "No portable packaging yet. Add packaging, skill and legal payload, then publish archives."
+          "reason": "Releases have no archives. Archive the pnpm package output with skill and legal payload."
         },
         "win32-x64": {
           "status": "unpublished",
-          "reason": "No portable packaging yet. Add packaging, skill and legal payload, then publish archives."
+          "reason": "Releases have no archives. Archive the pnpm package output with skill and legal payload."
         }
       }
     }
