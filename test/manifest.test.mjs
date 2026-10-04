@@ -63,3 +63,11 @@ test('doctor wire schema requires stable fields and known statuses', () => {
   assert.ok(validateSchema(result, schema).length);
   assert.throws(() => validateSchema({}, { unexpectedVocabulary: true }), /Unsupported schema keyword/);
 });
+
+test('all archive entry and notices paths reference the schema owning path grammar', () => {
+  const schema = JSON.parse(readFileSync(join(repository, 'schemas/pack.schema.json'), 'utf8'));
+  const paths = [schema.$defs.tool.properties.entry, schema.$defs.tool.properties.notices, schema.$defs.tool.properties.skillPath,
+    schema.$defs.runtime.properties.notices, ...Object.values(schema.$defs.runtime.properties.entry.properties)];
+  assert.equal(paths.length, 8);
+  for (const path of paths) assert.deepEqual(path, { $ref: '#/$defs/path' });
+});

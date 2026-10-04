@@ -143,8 +143,7 @@
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[a-zA-Z0-9.-]+)?$"
         },
         "entry": {
-          "type": "string",
-          "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$"
+          "$ref": "#/$defs/path"
         },
         "runner": {
           "enum": [
@@ -173,12 +172,10 @@
           "minLength": 1
         },
         "notices": {
-          "type": "string",
-          "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$"
+          "$ref": "#/$defs/path"
         },
         "skillPath": {
-          "type": "string",
-          "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$"
+          "$ref": "#/$defs/path"
         },
         "archives": {
           "type": "object",
@@ -249,28 +246,23 @@
           "minLength": 1
         },
         "notices": {
-          "type": "string",
-          "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$"
+          "$ref": "#/$defs/path"
         },
         "entry": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "darwin-arm64": {
-              "type": "string",
-              "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$"
+              "$ref": "#/$defs/path"
             },
             "darwin-x64": {
-              "type": "string",
-              "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$"
+              "$ref": "#/$defs/path"
             },
             "linux-x64": {
-              "type": "string",
-              "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$"
+              "$ref": "#/$defs/path"
             },
             "win32-x64": {
-              "type": "string",
-              "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$"
+              "$ref": "#/$defs/path"
             }
           }
         },
