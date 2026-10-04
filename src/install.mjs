@@ -1,11 +1,22 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync, lstatSync, statSync, readdirSync, realpathSync, readlinkSync, mkdirSync } from 'node:fs';
-import { join, relative, isAbsolute, sep } from 'node:path';
+import { join, relative, isAbsolute, sep, dirname, resolve } from 'node:path';
 import { readManifest, installationPlan } from './manifest.mjs';
 import { buildAdapters } from './skills.mjs';
 import { quotePosix } from './tools.mjs';
 
 const hash = file => createHash('sha256').update(readFileSync(file)).digest('hex');
+function inspectStage(stage, base = dirname(stage)) {
+  const root = resolve(base), target = resolve(stage), rel = relative(root, target);
+  if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new Error(`Stage containment refused: ${stage}`);
+  for (let cursor = target; ; cursor = dirname(cursor)) {
+    let stat;
+    try { stat = lstatSync(cursor); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    if (stat?.isSymbolicLink()) throw new Error(`Stage ancestor symlink refused: ${cursor}`);
+    if (cursor === root) break;
+  }
+  inspectTree(target);
+}
 function inspectTree(root, directory = root) {
   for (const name of readdirSync(directory)) {
     const path = join(directory, name);
@@ -27,7 +38,15 @@ if (command === 'plan') {
     if (!entry.entry || entry.format === 'zip') throw new Error(`Unsupported archive layout: ${entry.id}`);
     console.log([entry.kind, entry.id, entry.url, entry.sha256, entry.format, entry.stripComponents, entry.entry].join('\t'));
   }
+} else if (command === 'inspect') {
+  inspectStage(stage);
 } else if (command === 'finalize') {
+  inspectStage(stage, process.argv[6]);
+  // Artifact ancestors must be real directories before any generated writes.
+  for (const category of ['runtimes', 'tools', 'bin', 'skills']) {
+    const path = join(stage, category);
+    if (existsSync(path) && lstatSync(path).isSymbolicLink()) throw new Error(`Stage ancestor symlink refused: ${path}`);
+  }
   const files = {};
   const links = {};
   const collect = (directory, prefix = '') => {
@@ -70,7 +89,7 @@ if (command === 'plan') {
 } else if (command === 'verify') {
   const state = JSON.parse(readFileSync(join(stage, 'state.json'), 'utf8'));
   if (state.owner !== 'praxity-toolkit' || state.manifestSha256 !== hash(manifestFile)) throw new Error('Pack version already exists with a different manifest');
-  inspectTree(stage);
+  inspectStage(stage);
   for (const [file, expected] of Object.entries(state.files)) {
     if (isAbsolute(file) || file.split(/[\\/]/).includes('..')) throw new Error('Unsafe installed inventory path');
     if (!existsSync(join(stage, file)) || !lstatSync(join(stage, file)).isFile() || hash(join(stage, file)) !== expected) throw new Error(`Installed file damaged: ${file}. Roll back or move this pack aside before reinstalling.`);

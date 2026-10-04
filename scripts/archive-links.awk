@@ -16,10 +16,12 @@ function safe(path,    parts,count,i,depth) {
   if (kind ~ /[bcp]/) exit 1
   separator=index($0," -> ")
   hard=index($0," link to ")
-  if (kind == "l" || hard) {
+  hardLength=9
+  if (!hard) { hard=index($0," == "); hardLength=4 }
+  if (kind == "l" || kind == "h" || hard) {
     if (!separator && !hard) exit 1
     boundary=separator ? separator : hard
-    target=substr($0,boundary+(separator ? 4 : 9))
+    target=substr($0,boundary+(separator ? 4 : hardLength))
     if (target ~ /^\// || target ~ /\\/ || target ~ /^[A-Za-z]:/) exit 1
     prefix=substr($0,1,boundary-1)
     # Archive member paths with spaces are accepted for regular files, but

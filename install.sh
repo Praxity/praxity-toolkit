@@ -19,6 +19,32 @@ done
 case "$HOME" in /*) ;; *) die 'HOME must be an absolute path' ;; esac
 case "$HOME" in *'
 '*) die 'HOME must not contain newlines' ;; esac
+# Resolve HOME once, then refuse symlinks in every descendant ancestor.
+HOME=$(CDPATH= cd -P -- "$HOME" && pwd -P) || die 'Cannot resolve HOME'
+ROOT="$HOME/.praxity/toolkit"
+BIN="$HOME/.praxity/bin"
+contained() (
+  case "$1" in "$HOME"/*) ;; *) die "Path containment refused: $1" ;; esac
+  case "$1" in */../*|*/./*|*/..|*/.) die "Unnormalized path refused: $1" ;; esac
+  CURSOR=$1
+  while [ "$CURSOR" != "$HOME" ]; do
+    [ ! -L "$CURSOR" ] || die "Ancestor symlink refused: $CURSOR"
+    if [ -d "$CURSOR" ]; then
+      RESOLVED=$(CDPATH= cd -P -- "$CURSOR" && pwd -P) || die 'Cannot resolve path'
+      case "$RESOLVED" in "$HOME"/*) ;; *) die "Path containment refused: $CURSOR" ;; esac
+    fi
+    CURSOR=${CURSOR%/*}
+  done
+)
+check_stage() {
+  contained "$1"
+  if [ -d "$1" ]; then
+    # Resumed stages are checked in full before the first extraction or copy.
+    find "$1" -type l -exec sh -c 'for path do echo "Stage symlink refused: $path" >&2; done' sh {} + > /dev/null
+    [ -z "$(find "$1" -type l -print)" ] || die "Stage symlink refused: $1"
+  fi
+}
+contained "$ROOT"
 mkdir -p "$ROOT"
 [ ! -L "$ROOT/.install-lock" ] || die 'Install lock is a symlink'
 if ! mkdir "$ROOT/.install-lock" 2>/dev/null; then
@@ -139,12 +165,13 @@ download() (
 )
 extract() (
   ARCHIVE=$1; DIRECTORY=$2; STRIP=$3
+  contained "$DIRECTORY"
   [ ! -L "$DIRECTORY" ] || die 'Staging destination is a symlink'
-  tar -tf "$ARCHIVE" > "$ROOT/.archive-list"
+  tar -P -tf "$ARCHIVE" > "$ROOT/.archive-list"
   LC_ALL=C awk '
     /^\// || /(^|\/)\.\.(\/|$)/ || /\\/ || /^[A-Za-z]:/ {exit 1}
   ' "$ROOT/.archive-list" || die 'Unsafe archive path'
-  tar -tvf "$ARCHIVE" > "$ROOT/.archive-links"
+  tar -P -tvf "$ARCHIVE" > "$ROOT/.archive-links"
   LC_ALL=C awk -v strip="$STRIP" -f "$SCRIPT_DIR/scripts/archive-links.awk" "$ROOT/.archive-links" || die 'Unsafe archive link or special file'
   rm -rf -- "$DIRECTORY"
   mkdir -p "$DIRECTORY"
@@ -163,6 +190,7 @@ if [ -e "$ROOT/$VERSION" ]; then
   "$NODE" "$SCRIPT_DIR/src/install.mjs" verify "$ROOT/.manifest.json" "$PLATFORM" "$ROOT/$VERSION"
 else
   STAGE="$ROOT/.staging-$VERSION"
+  check_stage "$STAGE"
   [ ! -L "$STAGE" ] || die 'Staging directory is a symlink'
   mkdir -p "$STAGE"
   if [ -f "$STAGE/.manifest-sha256" ]; then [ "$(cat "$STAGE/.manifest-sha256")" = "$MANIFEST_SHA" ] || die 'Interrupted stage has a different manifest; choose a new pack version'; fi
@@ -176,6 +204,7 @@ else
     extract "$ROOT/.cache/$HASH.$FORMAT" "$STAGE/$CATEGORY/$ID" "$STRIP"
   done < "$ROOT/.plan.tsv"
   for DIRECTORY in src scripts schemas skills fixtures; do
+    contained "$STAGE/$DIRECTORY"
     [ ! -e "$STAGE/$DIRECTORY" ] || rm -rf -- "$STAGE/$DIRECTORY"
     cp -R "$SCRIPT_DIR/$DIRECTORY" "$STAGE/$DIRECTORY"
   done

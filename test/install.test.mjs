@@ -1,61 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { gzipSync } from 'node:zlib';
 import { fixture, repository, examplePack } from './helpers.mjs';
 
-const bash = process.platform === 'win32' ? 'C:/Program Files/Git/bin/bash.exe' : 'bash';
-const posix = path => process.platform === 'win32' ? path.replaceAll('\\', '/').replace(/^([A-Za-z]):/, (_, letter) => `/${letter.toLowerCase()}`) : path;
-const quote = text => `'${text.replaceAll("'", "'\\''")}'`;
-function shell(command, options = {}) {
-  return spawnSync(bash, ['-c', command], { encoding: 'utf8', timeout: 60_000, maxBuffer: 2 * 1024 * 1024, ...options });
-}
-function archive(directory, output) {
-  const result = shell(`tar -czf ${quote(posix(output))} -C ${quote(posix(directory))} .`);
-  assert.equal(result.status, 0, result.stderr);
-  return { status: 'published', url: pathToFileURL(output).href,
-    sha256: createHash('sha256').update(readFileSync(output)).digest('hex'), format: 'tar.gz', stripComponents: 0 };
-}
-function installation(t, options = {}) {
-  const { root, home: originalHome } = fixture(t);
-  const home = options.homeName ? join(root, options.homeName) : originalHome;
-  if (options.homeName) mkdirSync(home);
-  const pack = examplePack();
-  const runtime = join(root, 'fake node');
-  mkdirSync(join(runtime, 'bin'), { recursive: true });
-  const binary = process.execPath.replaceAll('\\', '/');
-  // MSYS does not reliably convert paths containing apostrophes for native
-  // Node. The fixture emulates a POSIX Node by converting its filesystem args.
-  const nativeArguments = process.platform === 'win32' ? 'for fixture_arg do\n  shift\n  case "$fixture_arg" in /*) fixture_arg=$(cygpath -m "$fixture_arg");; esac\n  set -- "$@" "$fixture_arg"\ndone\n' : '';
-  // The fake archive delegates parsing/finalization to the test's real Node.
-  // Its doctor output is a fake external CLI, independent of doctor unit tests.
-  writeFileSync(join(runtime, 'bin/node'), `#!/bin/sh\nif [ "${'$'}{1:-}" = --version ]; then echo v24.21.0; exit 0; fi\ncase "${'$'}{1:-}" in */src/cli.mjs) if [ "${'$'}{2:-}" = doctor ]; then echo 'fixture doctor: ok'; exit 0; fi;; esac\n${nativeArguments}exec ${quote(binary)} "${'$'}@"\n`, { mode: 0o755 });
-  writeFileSync(join(runtime, 'LICENSE'), 'Node fixture licence\n');
-  pack.runtimes.node.archives['darwin-arm64'] = archive(runtime, join(root, 'node archive.tar.gz'));
-  const typst = join(root, 'fake typst'); mkdirSync(typst);
-  writeFileSync(join(typst, 'typst'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-  writeFileSync(join(typst, 'LICENSE'), 'Typst fixture licence\n');
-  pack.runtimes.typst.archives['darwin-arm64'] = archive(typst, join(root, 'typst archive.tar.gz'));
-  if (options.tool !== false) {
-    const studio = join(root, 'fake studio'); mkdirSync(studio);
-    writeFileSync(join(studio, 'praxity.mjs'), 'console.log(JSON.stringify(process.argv.slice(2)));\n');
-    writeFileSync(join(studio, 'THIRD-PARTY-NOTICES.md'), 'Tool legal fixture\n');
-    mkdirSync(join(studio, 'skill'));
-    writeFileSync(join(studio, 'skill/SKILL.md'), '---\nname: prax-format\ndescription: Write a course.\n---\nTool-owned skill.\n');
-    pack.tools[0].archives['darwin-arm64'] = archive(studio, join(root, 'studio archive.tar.gz'));
-  }
-  const manifest = join(root, 'manifest file.json');
-  const save = () => writeFileSync(manifest, JSON.stringify(pack, null, 2));
-  save();
-  const env = { ...process.env, HOME: posix(home), USERPROFILE: home, MSYS_NO_PATHCONV: undefined };
-  const install = (extra = '') => shell(`sh ${quote(posix(join(repository, 'install.sh')))} --manifest ${quote(pathToFileURL(manifest).href)} --platform darwin-arm64 ${extra}`, { env });
-  const action = command => shell(`sh ${quote(posix(join(repository, 'install.sh')))} ${command}`, { env });
-  return { root, home, pack, manifest, save, env, install, action, toolkit: join(home, '.praxity/toolkit') };
-}
+import { installation, shell, posix, quote, archive } from './installer-fixture.mjs';
+
 const passed = result => assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 test('POSIX bootstrap fresh install and idempotent rerun, with spaces and no profile edits', t => {
   const setup = installation(t);
@@ -217,4 +171,30 @@ test('a published tool without its notices fails before activation', t => {
   assert.notEqual(result.status, 0); assert.match(result.stderr, /Missing notices for studio/);
   assert.equal(existsSync(join(setup.toolkit, 'active')), false);
   assert.equal(existsSync(join(setup.toolkit, '0.1.0')), false);
+});
+
+test('resumed stage ancestor symlink refuses before deleting or extracting outside', t => {
+  const setup = installation(t);
+  const outside = join(setup.root, 'outside');
+  mkdirSync(join(outside, 'node'), { recursive: true });
+  writeFileSync(join(outside, 'node/user.txt'), 'USER FILE');
+  const stage = join(setup.toolkit, '.staging-0.1.0');
+  mkdirSync(stage, { recursive: true });
+  symlinkSync(outside, join(stage, 'runtimes'), process.platform === 'win32' ? 'junction' : 'dir');
+  const result = setup.install();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /symlink|containment/i);
+  assert.equal(readFileSync(join(outside, 'node/user.txt'), 'utf8'), 'USER FILE');
+  assert.equal(existsSync(join(outside, 'node/bin/node')), false);
+});
+
+test('finalize validates the whole stage before creating wrappers or metadata', t => {
+  const setup = installation(t);
+  const stage = join(setup.root, 'stage'); mkdirSync(stage);
+  const outside = join(setup.root, 'outside'); mkdirSync(outside);
+  symlinkSync(outside, join(stage, 'runtimes'), process.platform === 'win32' ? 'junction' : 'dir');
+  const result = spawnSync(process.execPath, [join(repository, 'src/install.mjs'), 'finalize', setup.manifest, 'darwin-arm64', stage, setup.toolkit], { encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /symlink|containment/i);
+  assert.equal(existsSync(join(stage, 'state.json')), false);
 });
