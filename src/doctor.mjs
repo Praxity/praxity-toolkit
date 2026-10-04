@@ -75,18 +75,25 @@ export function doctor(context, run = probeProcess) {
           writeFileSync(input, '# Tiny document\n\nHello from Praxity.\n');
           expected = join(work, 'print.pdf');
           args = ['render', input, '--output', expected];
+        } else if (tool.id === 'import') {
+          // Import ships a tiny synthetic SCORM package for exactly this probe.
+          const output = join(work, 'import');
+          expected = join(output, 'course.yaml');
+          args = [join(context.root, 'tools/import/fixtures/smoke/scorm'), '--output', output];
         } else args = ['--help'];
         const result = run(toolInvocation(context, tool, args));
         let ok = success(result);
         if (expected) ok &&= existsSync(expected);
         if (ok && tool.id === 'print') ok &&= readFileSync(expected).subarray(0, 5).toString() === '%PDF-';
-        if (ok && ['studio', 'trace'].includes(tool.id)) {
+        if (ok && ['studio', 'trace', 'import'].includes(tool.id)) {
           try {
-            const data = JSON.parse(expected ? readFileSync(expected, 'utf8') : result.stdout);
-            ok = tool.id === 'studio' ? data.schema === 'praxity-inspect/1' && Array.isArray(data.lessons) && data.lessons.length > 0 : typeof data === 'object' && data !== null;
+            const data = JSON.parse(expected && tool.id === 'trace' ? readFileSync(expected, 'utf8') : result.stdout);
+            ok = tool.id === 'studio' ? data.schema === 'praxity-inspect/1' && Array.isArray(data.lessons) && data.lessons.length > 0
+              : tool.id === 'import' ? data.ok === true && data.lessons === 1 && data.pages === 1 && data.losses === 0
+              : typeof data === 'object' && data !== null;
           } catch { ok = false; }
         }
-        items.push(ok ? item(`tool.${tool.id}`, 'ok', tool.id === 'import' ? 'CLI help probe; conversion not yet covered' : 'Functional smoke probe passed') : failed(`tool.${tool.id}`, result, reinstall));
+        items.push(ok ? item(`tool.${tool.id}`, 'ok', 'Functional smoke probe passed') : failed(`tool.${tool.id}`, result, reinstall));
       }
     }
     const toolSkills = context.pack.tools.flatMap(tool => {

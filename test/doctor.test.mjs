@@ -28,6 +28,10 @@ function runner(context, check = checkResult) {
     if (id === 'studio') return { code: 0, stdout: '{"schema":"praxity-inspect/1","lessons":[{}]}', stderr: '' };
     if (id === 'trace') { const out = args.at(-1); mkdirSync(out); writeFileSync(join(out, 'report.json'), '{"course":{}}'); return { code: 0, stdout: '', stderr: '' }; }
     if (id === 'print') { writeFileSync(args.at(-1), '%PDF-1.7\nfake'); return { code: 0, stdout: '{}', stderr: '' }; }
+    if (id === 'import') {
+      const out = args.at(-1); mkdirSync(out); writeFileSync(join(out, 'course.yaml'), 'title: "Tiny import"\n');
+      return { code: 0, stdout: JSON.stringify(check.importResult ?? { ok: true, title: 'Tiny import', lessons: 1, pages: 1, assets: 0, losses: 0 }), stderr: '' };
+    }
     throw new Error(`Unexpected probe: ${command} ${args}`);
   };
 }
@@ -79,6 +83,15 @@ test('an unusable system Java, such as the macOS stub, is not installed rather t
   assert.equal(report.exitCode, 0);
   writeFileSync(join(context.home, '.praxity/toolkit-state/declined.json'), '{"check":["java"]}');
   assert.equal(doctor(context, runner(context, check)).items.find(item => item.id === 'tool.check.java').status, 'declined');
+});
+test('import is ok only when it converts the shipped SCORM fixture without losses', t => {
+  const context = prepared(t);
+  fakeTool(context, 'import');
+  const status = check => doctor(context, runner(context, check)).items.find(item => item.id === 'tool.import');
+  const passed = status(checkResult);
+  assert.equal(passed.status, 'ok'); assert.equal(passed.message, 'Functional smoke probe passed');
+  assert.equal(status({ ...checkResult, importResult: { ok: true, lessons: 1, pages: 1, losses: 2 } }).status, 'failed');
+  assert.equal(status({ ...checkResult, importResult: { ok: false } }).status, 'failed');
 });
 test('an explicitly selected component that does not work still fails', t => {
   const context = prepared(t);
