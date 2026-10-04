@@ -84,7 +84,8 @@ refused. Roll back to an intact previous pack, or use the backup procedure above
 before reinstalling. A different manifest needs a new pack version.
 
 Updates retain the previous version. Both version pointers change in one atomic
-rename. Save and close Studio before switching or removing a pack. This scaffold
+rename. Rollback checks the destination pack and keeps the outgoing pack, even
+when its contents are damaged. Save and close Studio before switching or removing a pack. This scaffold
 does not detect dirty editor sessions.
 
 ```sh

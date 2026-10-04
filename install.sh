@@ -89,7 +89,7 @@ owned_version() {
 }
 activate() {
   owned_version "$1"
-  [ -z "$2" ] || owned_version "$2"
+  [ -z "$2" ] || safe_version "$2"
   ACTIVATION=$(new_temp)
   capture "$ACTIVATION" printf '%s\n%s\n' "$1" "$2"
   owned_publish "$ACTIVATION" "$ROOT/active"
@@ -107,15 +107,23 @@ if [ -f "$ROOT/active" ]; then
   ledger_assert "$ROOT/active"
   ACTIVE_VERSION=$(sed -n '1p' "$ROOT/active")
   safe_version "$ACTIVE_VERSION"
-  ledger_assert "$ROOT/$ACTIVE_VERSION/runtimes/node/bin/node"
-  LEDGER_NODE="$ROOT/$ACTIVE_VERSION/runtimes/node/bin/node"
+  LEDGER_VERSION=$ACTIVE_VERSION
+  if [ "$ACTION" = rollback ]; then
+    LEDGER_VERSION=$(sed -n '2p' "$ROOT/active")
+    [ -n "$LEDGER_VERSION" ] || die 'No previous pack to roll back to'
+    safe_version "$LEDGER_VERSION"
+  fi
+  ledger_assert "$ROOT/$LEDGER_VERSION/runtimes/node/bin/node"
+  LEDGER_NODE="$ROOT/$LEDGER_VERSION/runtimes/node/bin/node"
 fi
 if [ "$ACTION" = rollback ]; then
   CURRENT=$(sed -n '1p' "$ROOT/active" 2>/dev/null) || die 'No current pack'
   PREVIOUS=$(sed -n '2p' "$ROOT/active" 2>/dev/null) || die 'No previous pack to roll back to'
   [ -n "$PREVIOUS" ] || die 'No previous pack to roll back to'
-  owned_version "$CURRENT"; owned_version "$PREVIOUS"; launcher_owned
-  "$ROOT/$CURRENT/runtimes/node/bin/node" "$ROOT/$CURRENT/src/install.mjs" verify "$ROOT/$PREVIOUS/pack.json" darwin-arm64 "$ROOT/$PREVIOUS"
+  owned_version "$PREVIOUS"; launcher_owned
+  "$LEDGER_NODE" "$SCRIPT_DIR/src/install.mjs" verify "$ROOT/$PREVIOUS/pack.json" darwin-arm64 "$ROOT/$PREVIOUS"
+  # Outgoing damage is diagnostic only. Nothing in that pack is removed.
+  if ! ledger_tree_assert "$ROOT/$CURRENT" 2>/dev/null; then printf 'Damaged outgoing pack preserved: %s\n' "$CURRENT" >&2; fi
   activate "$PREVIOUS" "$CURRENT"
   printf 'Active pack: %s\n' "$PREVIOUS"
   exit 0

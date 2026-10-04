@@ -45,6 +45,21 @@ test('recovery after extraction preserves an additional unrecorded file', t => {
   assert.equal(readFileSync(file, 'utf8'), 'USER FILE');
 });
 
+for (const damagedPath of ['runtimes/typst/LICENSE', 'runtimes/node/bin/node']) test(`rollback keeps a damaged outgoing ${damagedPath} and activates an intact destination`, t => {
+  const setup = installation(t, { tool: false });
+  assert.equal(setup.install().status, 0);
+  setup.pack.version = '0.2.0'; setup.save();
+  assert.equal(setup.install().status, 0);
+  const damaged = join(setup.toolkit, '0.2.0', damagedPath);
+  writeFileSync(damaged, 'damaged notice\n');
+  const rollback = setup.action('rollback'); assert.equal(rollback.status, 0, rollback.stderr);
+  assert.match(rollback.stderr, /damaged.*(?:kept|preserv)|(?:kept|preserv).*damaged/i);
+  assert.equal(readFileSync(damaged, 'utf8'), 'damaged notice\n');
+  assert.equal(readFileSync(join(setup.toolkit, 'active'), 'utf8'), '0.1.0\n0.2.0\n');
+  const version = shell(`${quote(posix(join(setup.home, '.praxity/bin/praxity')))} version`, { env: setup.env });
+  assert.equal(version.status, 0, version.stderr); assert.equal(JSON.parse(version.stdout).pack, '0.1.0');
+});
+
 test('an interrupted stage with recorded internal archive symlinks resumes safely', t => {
   const setup = installation(t), marker = join(setup.root, 'killed-before-finalize');
   const node = join(setup.root, 'fake node/bin/node');
