@@ -135,20 +135,23 @@
       "skillPath": "skill",
       "archives": {
         "darwin-arm64": {
-          "status": "unpublished",
-          "reason": "Releases have no portable archives. Publish the setup/doctor build and its skill and legal payload."
+          "status": "published",
+          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0-rc.1/praxity-check-0.6.0-portable.tar.gz",
+          "sha256": "9b878ef21facbd99dc41b465a8be6da8193ae1fe7725b23a94f25db22200d502",
+          "format": "tar.gz",
+          "stripComponents": 1
         },
         "darwin-x64": {
           "status": "unpublished",
-          "reason": "Releases have no portable archives. Publish the setup/doctor build and its skill and legal payload."
+          "reason": "Portable archive verified only on darwin-arm64 so far; the same file is expected to serve this platform once tested."
         },
         "linux-x64": {
           "status": "unpublished",
-          "reason": "Releases have no portable archives. Publish the setup/doctor build and its skill and legal payload."
+          "reason": "Portable archive verified only on darwin-arm64 so far; the same file is expected to serve this platform once tested."
         },
         "win32-x64": {
           "status": "unpublished",
-          "reason": "Releases have no portable archives. Publish the setup/doctor build and its skill and legal payload."
+          "reason": "Portable archive verified only on darwin-arm64 so far; the same file is expected to serve this platform once tested."
         }
       }
     },
