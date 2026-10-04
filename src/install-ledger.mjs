@@ -6,7 +6,9 @@ import { archiveInventory } from './archive-inventory.mjs';
 
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 export function installJournal(homeArgument, rootArgument) {
-  const home = realpathSync(homeArgument), root = resolve(rootArgument);
+  // Keep the caller's spelling for journal keys, but compare physical paths
+  // against the physical home. macOS /var is an alias of /private/var.
+  const home = resolve(homeArgument), physicalHome = realpathSync(home), root = resolve(rootArgument);
   const ledger = join(root, '.install-ledger.tsv');
   const exists = path => { try { return lstatSync(path); } catch (e) { if (e.code === 'ENOENT') return null; throw e; } };
   function contained(path, link = false) {
@@ -17,7 +19,7 @@ export function installJournal(homeArgument, rootArgument) {
       const stat = exists(parent);
       if (stat?.isSymbolicLink()) throw new Error(`Ancestor symlink refused: ${parent}`);
       if (stat) {
-        const resolved = relative(home, realpathSync(parent));
+        const resolved = relative(physicalHome, realpathSync(parent));
         if (resolved === '..' || resolved.startsWith(`..${sep}`) || isAbsolute(resolved)) throw new Error(`Path containment refused: ${parent}`);
       }
     }

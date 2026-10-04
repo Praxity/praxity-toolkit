@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,7 +16,8 @@ export function examplePack() {
   return pack;
 }
 export function fixture(t) {
-  const root = mkdtempSync(join(tmpdir(), 'praxity toolkit '));
+  // Crash hooks compare exact paths with modules that canonicalize their base.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'praxity toolkit ')));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const home = join(root, 'home');
   const cwd = join(root, 'project');

@@ -28,7 +28,7 @@ function safe(path,    parts,count,i,depth) {
     # ambiguous verbose link listings fail rather than guessing a target.
     fieldCount=split(prefix,fields,/[[:space:]]+/)
     member=fields[fieldCount]
-    if (separator) { sub(/[^/]+$/,"",member); target=member target }
+    if (separator) { sub(/[^\/]+$/,"",member); target=member target }
     if (!safe(target)) exit 1
   }
 }
