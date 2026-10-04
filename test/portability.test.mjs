@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { shell, posix, quote } from './installer-fixture.mjs';
+import { interruptInstaller, shell, posix, quote } from './installer-fixture.mjs';
 import { fixture, repository } from './helpers.mjs';
 import { installJournal } from '../src/install-ledger.mjs';
 
@@ -69,6 +69,21 @@ test('fixture paths use the same canonical spelling as skill crash hooks', t => 
   const paths = JSON.parse(child.stdout);
   assert.equal(paths.root, paths.canonicalRoot);
   assert.equal(paths.home, paths.canonicalHome);
+});
+
+test('crash shims kill the installer through an intermediate fetch shell', t => {
+  const { root, home } = fixture(t), toolkit = join(home, '.praxity/toolkit');
+  const pid = join(toolkit, '.install-lock/pid'), cleanup = join(root, 'cleanup');
+  mkdirSync(join(toolkit, '.install-lock'), { recursive: true });
+  const grandchild = `sh -c ${quote(interruptInstaller({ toolkit }))}; :`;
+  const installer = `trap ${quote(`touch ${quote(posix(cleanup))}`)} EXIT
+    printf '%s\\n' "$$" > ${quote(posix(pid))}
+    sh -c ${quote(grandchild)}
+    :`;
+  const killed = shell(`sh -c ${quote(installer)}`);
+  assert.notEqual(killed.status, 0, killed.stderr);
+  assert.equal(existsSync(cleanup), false, 'Installer survived the crash and ran cleanup');
+  assert.ok(existsSync(pid));
 });
 test('installer scripts use BSD-compatible commands and pass sh/bash syntax checks', () => {
   const files = ['install.sh', ...readdirSync(join(repository, 'scripts')).filter(name => /\.(sh|awk)$/.test(name)).map(name => `scripts/${name}`)];

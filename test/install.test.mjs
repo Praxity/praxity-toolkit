@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { gzipSync } from 'node:zlib';
 import { fixture, repository, examplePack } from './helpers.mjs';
 
-import { installation, shell, posix, quote, archive } from './installer-fixture.mjs';
+import { installation, shell, posix, quote, archive, interruptInstaller } from './installer-fixture.mjs';
 import { installationPlan } from '../src/manifest.mjs';
 
 const passed = result => assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
@@ -119,7 +119,7 @@ test('quoted absolute launchers tolerate apostrophes as well as spaces', t => {
 test('owned dead-process lock is reclaimed; unsafe archive links are rejected before extraction', t => {
   const setup = installation(t);
   const mock = join(setup.root, 'kill-bin'); mkdirSync(mock);
-  writeFileSync(join(mock, 'curl'), '#!/bin/sh\nkill -KILL "$PPID"\nexit 1\n', { mode: 0o755 });
+  writeFileSync(join(mock, 'curl'), `#!/bin/sh\n${interruptInstaller(setup)}\nexit 1\n`, { mode: 0o755 });
   const interrupted = shell(`export PATH=${quote(posix(mock))}:"$PATH"; sh ${quote(posix(join(repository, 'install.sh')))} --manifest ${quote(pathToFileURL(setup.manifest).href)} --platform darwin-arm64`, { env: setup.env });
   assert.notEqual(interrupted.status, 0);
   assert.ok(existsSync(join(setup.toolkit, '.install-lock/pid')));

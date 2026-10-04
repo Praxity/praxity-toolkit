@@ -9,6 +9,8 @@ import { fixture, repository, examplePack } from './helpers.mjs';
 export const bash = process.platform === 'win32' ? 'C:/Program Files/Git/bin/bash.exe' : 'bash';
 export const posix = path => process.platform === 'win32' ? path.replaceAll('\\', '/').replace(/^([A-Za-z]):/, (_, letter) => `/${letter.toLowerCase()}`) : path;
 export const quote = text => `'${text.replaceAll("'", "'\\''")}'`;
+// curl runs inside fetch subshells. Their parent PID need not be the installer.
+export const interruptInstaller = setup => `kill -KILL "$(cat ${quote(posix(join(setup.toolkit, '.install-lock/pid')))})"`;
 export function shell(command, options = {}) {
   return spawnSync(bash, ['-c', command], { encoding: 'utf8', timeout: 60_000, maxBuffer: 2 * 1024 * 1024, ...options });
 }
