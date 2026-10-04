@@ -24,11 +24,13 @@ main() {
   rm -rf "$toolkit"
   curl -fsSL https://github.com/Praxity/praxity-toolkit/archive/refs/heads/main.tar.gz | tar xz -C "$HOME"
 
-  step "Installing the pack (no administrator rights needed)"
-  (cd "$toolkit" && sh install.sh </dev/null)
-
-  step "Checking the installation"
-  "$praxity" doctor </dev/null || echo "(doctor reported problems; the details are above)"
+  step "Installing the pack and checking it (no administrator rights needed)"
+  # install.sh ends with the doctor and returns its verdict. Studio can still be
+  # tried when only an optional part failed, so stop only if the launcher is missing.
+  if ! (cd "$toolkit" && sh install.sh </dev/null); then
+    [ -x "$praxity" ] || { echo "The install failed; the details are above."; exit 1; }
+    echo "(the install or the doctor reported a problem above; trying Studio anyway)"
+  fi
 
   step "Starting Studio's editor on a copy of the sample course"
   if [ ! -d "$course" ]; then cp -R "$toolkit/fixtures/course" "$course"; fi
