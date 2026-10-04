@@ -17,10 +17,12 @@ tool transcript.
 
 ## Install
 
-Obtain this private checkout through the owner's existing repository access.
-Review `install.sh` and `pack.json`, then run from that checkout on the Mac:
+Download this repository, review `install.sh` and `pack.json`, then run the
+installer from that folder on an Apple Silicon Mac:
 
 ```sh
+curl -fsSL https://github.com/Praxity/praxity-toolkit/archive/refs/heads/main.tar.gz | tar xz
+cd praxity-toolkit-main
 sh install.sh
 ```
 
