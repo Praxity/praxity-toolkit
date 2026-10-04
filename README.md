@@ -4,12 +4,12 @@ Install Praxity's local tools for learning designers in your home folder.
 The pack provides pinned Node and Typst runtimes, a `praxity` command and skills
 for your agent host. There is no SDK or MCP server.
 
-This is a private scaffold. Every tool archive in `pack.json` is unpublished.
+This repository is a scaffold. Every tool archive in `pack.json` is unpublished.
 The current manifest installs Node and Typst and reports the missing tools.
 It does not yet deliver a working Studio editor or a complete tool pack.
-First supported target: Apple Silicon macOS with local T3 desktop. Direct
-Claude Code and Codex use still need host smoke checks. Other OS/CPU entries are
-release metadata only; their installers are not implemented.
+The pack installer supports Apple Silicon macOS with local T3 desktop. Skill
+adapters also support Codex CLI and Claude Code. Other OS/CPU entries are
+release metadata only; their pack installers are not implemented.
 
 Praxity's tools execute locally. The chosen host and model provider control
 telemetry and what they transmit. An editor capability URL can enter the host's
@@ -125,26 +125,74 @@ praxity skills install --host t3 --scope user
 ```
 
 Choose `--host t3|claude|codex` and `--scope user|project`. Project scope means
-the current directory. Use the actual project root; T3's Claude picker scans
-exactly that directory's `.claude/skills`, and its user scope wins duplicates.
-The generated layouts are:
+the current directory. Install at the actual project root. There are two
+adapters: `claude` and `codex`. `t3` remains an alias for `claude`.
 
-| Host | Layout relative to home or project |
-| --- | --- |
-| T3 Claude picker, also native Claude plain skills | `.claude/skills/<name>/SKILL.md` |
-| Codex | `.agents/skills/<name>/SKILL.md` |
-| Claude Code plugin | `.claude/plugins/praxity/.claude-plugin/plugin.json` and sibling `skills/` |
+Both adapters may coexist in one scope. Installing another adapter retains the
+first. Each host gets one copy per skill. A same-host copy in the other scope,
+a legacy Codex skill in `.codex/skills`, or an unowned Praxity plugin blocks a
+competing installation. Unowned skills for a different host are preserved.
+The toolkit does not edit host settings, shell profiles or AGENTS files.
 
-For Claude, the installer prints `claude --plugin-dir <absolute-directory>`.
-Copying the plugin does not enable it in an existing session or register it in
-Claude's settings. The toolkit does not edit those settings.
+Ownership and recovery intents live in `.praxity/toolkit-skills.json`. Existing
+single-host records migrate automatically. The former owned Claude plugin moves
+to plain skills, and its unchanged files are removed. Modified or unowned files
+are preserved and stop migration or removal. Stop active host sessions before
+migrating the plugin, then start a new session without its old `--plugin-dir`.
+The generator emits only the two current layouts into a fresh output directory.
 
-One adapter is active per scope. Switching hosts removes only files recorded
-in `.praxity/toolkit-skills.json`; modified files are preserved and block the
-switch. Existing unowned or competing skills also block installation. A second
-scope is refused when it would compete with the existing installation.
-The generator writes only into a fresh output directory. Restart the host and
-verify invocation; file presence alone does not prove runtime discovery.
+Remove one adapter with `praxity skills uninstall --host claude --scope user`
+or `--host codex`. The other adapter remains installed. `--host t3` removes the
+shared Claude adapter. Pack uninstall still preserves host skills.
+
+### T3 Code
+
+For T3's Claude provider:
+
+```sh
+praxity skills install --host t3 --scope user
+```
+
+Files land in `~/.claude/skills/<name>/SKILL.md`, also used by Claude Code.
+For T3's Codex provider, additionally run
+`praxity skills install --host codex --scope user`. Those files land in
+`~/.agents/skills/<name>/SKILL.md`, also used by Codex CLI. Project scope uses
+the corresponding folders under the current project.
+
+Start a new thread with each provider. Type `$` in the composer, select
+`install-praxity` or `studio-editor`, and confirm the thread can use it.
+T3's [Claude provider docs](https://github.com/pingdotgg/t3code/blob/main/docs/user/providers-claude.md)
+describe its skill folders; its [Codex provider](https://github.com/pingdotgg/t3code/blob/main/apps/server/src/provider/Layers/CodexProvider.ts)
+asks the Codex app server for the project's skill inventory. With a custom
+provider home or a remote server, install where that provider runs. If your
+T3 version misses project skills in the picker, use user scope and check again.
+
+### Codex CLI
+
+```sh
+praxity skills install --host codex --scope user
+```
+
+Files land in `~/.agents/skills/<name>/SKILL.md`. With `--scope project`, they
+land in `.agents/skills` under the current project. Codex also scans parent
+folders up to the repository root. Start Codex in the project, run `/skills`
+or type `$`, and confirm both toolkit skill names appear. Ask it to list the
+available Praxity skills before invoking one. See [Codex skill discovery](https://learn.chatgpt.com/docs/build-skills).
+
+### Claude Code
+
+```sh
+praxity skills install --host claude --scope user
+```
+
+Files land in `~/.claude/skills/<name>/SKILL.md`. With `--scope project`, they
+land in `.claude/skills` under the current project. Start a new Claude session
+in the project, type `/` and look for `install-praxity` and `studio-editor`,
+or ask which skills it can see. Plain skills load automatically; no plugin
+flag is needed. See [Claude Code skill discovery](https://code.claude.com/docs/en/skills).
+
+File presence in doctor proves the adapter was copied. Verify the inventory
+and invocation in the host to confirm runtime discovery.
 
 ## Doctor
 
@@ -156,8 +204,8 @@ tools or unused adapters do not make a runtime-only install fail.
 Doctor checks the Node pin and compiles a tiny Typst document. It reads Check's
 own JSON doctor and inspects the bundled tiny Studio course. It runs Trace and
 Print on temporary inputs when installed. Import gets only a CLI help probe.
-It checks skill files at both scopes for T3, Codex and the Claude
-plugin. Probes time out after 30 seconds and cap captured output at 1 MiB.
+It checks the shared Claude and Codex skill folders at both scopes, with
+`host.claude` and `host.codex` items. Probes time out after 30 seconds and cap captured output at 1 MiB.
 Temporary probe documents are removed. It does not launch an editor or run a
 full Check audit.
 
@@ -219,7 +267,8 @@ node --test
 ```
 
 Offline installer tests use fake archives, temporary homes and a platform
-override. On Windows they run under Git Bash. Golden adapter files record
+override. On Windows, invoke the checks from PowerShell. Installer subprocesses
+use Git Bash. Golden adapter files record
 reviewed content hashes. CI runs the offline tests on GitHub-hosted Ubuntu, and the
 tests plus a real install in a temporary home on GitHub-hosted Apple Silicon macOS.
 No self-hosted machine runs code from this public repository's pull requests.

@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { toolInvocation, toolEnvironment, probeProcess, quotePosix, readDeclined } from './tools.mjs';
-import { buildAdapters, skillPresence } from './skills.mjs';
+import { adapters, buildAdapters, skillPresence } from './skills.mjs';
 import { loadSchema, validateSchema } from './schema.mjs';
 
 const item = (id, status, message, fix = '') => ({ id, status, message, fix });
@@ -94,10 +94,10 @@ export function doctor(context, run = probeProcess) {
       return context.state.installed.includes(tool.id) && existsSync(path) ? [path] : [];
     });
     const generated = buildAdapters({ source: join(context.root, 'skills'), tools: toolSkills, packVersion: context.pack.version });
-    const names = [...generated.t3.keys()].filter(name => name.endsWith('/SKILL.md')).map(name => name.split('/').at(-2));
-    for (const [scope, base] of [['user', context.home], ['project', context.cwd]]) for (const host of ['t3', 'codex', 'claude']) {
+    const names = [...generated.claude.keys()].filter(name => name.endsWith('/SKILL.md')).map(name => name.split('/').at(-2));
+    for (const [scope, base] of [['user', context.home], ['project', context.cwd]]) for (const host of Object.keys(adapters)) {
       const present = skillPresence({ base, host, names });
-      items.push(item(`host.${host}.${scope}`, present ? 'ok' : 'not-installed', present ? host === 'claude' ? 'Plugin files present; invoke Claude with --plugin-dir' : 'Skill files present; verify invocation in the host' : 'Generated adapter is absent', present ? '' : `praxity skills install --host ${host} --scope ${scope}`));
+      items.push(item(`host.${host}.${scope}`, present ? 'ok' : 'not-installed', present ? `Skill files present in ${adapters[host].skills}; verify invocation in the host` : 'Generated adapter is absent', present ? '' : `praxity skills install --host ${host} --scope ${scope}`));
     }
     const result = { schemaVersion: 1, packVersion: context.pack.version, items, exitCode: items.some(item => item.status === 'failed') ? 1 : 0 };
     const errors = validateSchema(result, loadSchema('doctor'));

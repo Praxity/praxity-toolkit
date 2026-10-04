@@ -6,7 +6,7 @@ import { parseArgs } from 'node:util';
 import { readManifest } from './manifest.mjs';
 import { doctor } from './doctor.mjs';
 import { executeTool, probeProcess, quotePosix } from './tools.mjs';
-import { buildAdapters, installSkills } from './skills.mjs';
+import { buildAdapters, installSkills, uninstallSkills } from './skills.mjs';
 
 export function loadContext(root = fileURLToPath(new URL('..', import.meta.url))) {
   const pack = readManifest(join(root, 'pack.json'));
@@ -37,7 +37,7 @@ export async function runCli(args, context, dependencies = {}) {
     return result.code ?? 1;
   }
   if (command === 'skills') {
-    if (rest[0] !== 'install') throw new Error('Usage: praxity skills install --host t3|claude|codex --scope user|project');
+    if (!['install', 'uninstall'].includes(rest[0])) throw new Error('Usage: praxity skills install|uninstall --host t3|claude|codex --scope user|project');
     const { values, positionals } = parseArgs({ args: rest.slice(1), allowPositionals: true, options: { host: { type: 'string' }, scope: { type: 'string' } } });
     if (positionals.length || !['t3', 'claude', 'codex'].includes(values.host) || !['user', 'project'].includes(values.scope)) throw new Error('Specify a valid --host and --scope');
     const tools = context.pack.tools.flatMap(tool => {
@@ -45,9 +45,9 @@ export async function runCli(args, context, dependencies = {}) {
       return context.state.installed.includes(tool.id) && existsSync(path) ? [path] : [];
     });
     const outputs = buildAdapters({ source: join(context.root, 'skills'), tools, packVersion: context.pack.version });
-    const result = installSkills({ base: values.scope === 'user' ? context.home : context.cwd,
+    const result = (rest[0] === 'install' ? installSkills : uninstallSkills)({ base: values.scope === 'user' ? context.home : context.cwd,
       otherBase: values.scope === 'user' ? context.cwd : context.home, host: values.host, outputs });
-    print(result.pluginDirectory ? `Plugin copied. Load it with: claude --plugin-dir ${quotePosix(result.pluginDirectory)}` : `Installed ${values.host} skills at ${values.scope} scope. Restart the host and verify invocation.`);
+    print(`${rest[0] === 'install' ? 'Installed' : 'Removed'} ${result.host} skills at ${values.scope} scope. Active adapters: ${result.hosts.join(', ') || 'none'}. Restart the host and verify invocation.`);
     return 0;
   }
   if (command === 'setup') {

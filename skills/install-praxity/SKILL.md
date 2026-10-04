@@ -21,9 +21,11 @@ is unavailable, stop and obtain it from the owner. Do not invent a download URL.
    items separately from declined components. Report fixes from doctor.
 5. Ask which host and scope the user uses if unknown. Run
    `~/.praxity/bin/praxity skills install --host t3 --scope user`, replacing only
-   the host and scope with the user's choice. Choose one adapter. Preserve files
-   the installer does not own. For Claude Code, use its printed `--plugin-dir`
-   command. Restart the host and verify invocation as well as picker visibility.
+   the host and scope with the user's choice. `t3` and `claude` share plain Claude
+   skills. Add the `codex` adapter for T3's Codex provider or Codex CLI; both
+   adapters may coexist. Preserve files the installer does not own. Plain Claude
+   skills need no plugin flag. Restart the host and verify invocation as well as
+   picker visibility.
 
 Use the absolute launcher when PATH is stale. Show the printed PATH line for the
 user to add; never edit shell profiles or AGENTS files. Praxity tools run locally;

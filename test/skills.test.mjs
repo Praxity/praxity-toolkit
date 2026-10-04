@@ -1,16 +1,208 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, watch, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, watch, readdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync, spawn } from 'node:child_process';
-import { buildAdapters, installSkills } from '../src/skills.mjs';
+import { buildAdapters, installSkills, uninstallSkills } from '../src/skills.mjs';
 import { runCli } from '../src/cli.mjs';
 import { doctor } from '../src/doctor.mjs';
 import { fixture, repository } from './helpers.mjs';
 
 const outputsFor = context => buildAdapters({ source: join(context.root, 'skills'), packVersion: context.pack.version });
+const readState = base => JSON.parse(readFileSync(join(base, '.praxity/toolkit-skills.json'), 'utf8'));
+
+function legacyInstall(context, host) {
+  const outputs = outputsFor(context);
+  const files = host === 'claude'
+    ? new Map([...outputs.claude].map(([name, bytes]) => [name.replace('.claude/skills/', '.claude/plugins/praxity/skills/'), bytes]))
+    : outputs[host === 't3' ? 'claude' : host];
+  if (host === 'claude') files.set('.claude/plugins/praxity/.claude-plugin/plugin.json', Buffer.from(JSON.stringify({
+    name: 'praxity', version: '0.1.0', description: 'Local Praxity tools for learning designers', author: { name: 'Praxity' },
+  }, null, 2) + '\n'));
+  for (const [name, bytes] of files) { mkdirSync(join(context.home, name, '..'), { recursive: true }); writeFileSync(join(context.home, name), bytes); }
+  mkdirSync(join(context.home, '.praxity'), { recursive: true });
+  writeFileSync(join(context.home, '.praxity/toolkit-skills.json'), JSON.stringify({
+    owner: 'praxity-toolkit', schemaVersion: 1, host,
+    files: Object.fromEntries([...files].map(([name, bytes]) => [name, createHash('sha256').update(bytes).digest('hex')])),
+  }, null, 2) + '\n');
+  return files;
+}
+
+for (const host of ['t3', 'claude', 'codex']) test(`schema-1 ${host} ownership migrates to an adapter set without losing owned references`, t => {
+  const { context } = fixture(t);
+  const references = join(context.root, 'skills/studio-editor/references'); mkdirSync(references);
+  writeFileSync(join(references, 'extra.txt'), 'PACKAGED REFERENCE');
+  legacyInstall(context, host);
+  const outputs = outputsFor(context);
+  installSkills({ base: context.home, host: 'claude', outputs });
+  const state = readState(context.home);
+  assert.equal(state.schemaVersion, 2); assert.equal(state.host, undefined);
+  assert.deepEqual(state.hosts, host === 'codex' ? ['claude', 'codex'] : ['claude']);
+  assert.equal(readFileSync(join(context.home, '.claude/skills/studio-editor/references/extra.txt'), 'utf8'), 'PACKAGED REFERENCE');
+  for (const name of Object.keys(state.files)) assert.equal(createHash('sha256').update(readFileSync(join(context.home, name))).digest('hex'), state.files[name]);
+  assert.equal(existsSync(join(context.home, '.claude/plugins/praxity/.claude-plugin/plugin.json')), false);
+  assert.equal(existsSync(join(context.home, '.claude/plugins/praxity/skills/studio-editor/SKILL.md')), false);
+});
+
+for (const obstacle of ['modified', 'unowned']) test(`legacy plugin migration preserves ${obstacle} files and its ledger`, t => {
+  const { context } = fixture(t); legacyInstall(context, 'claude');
+  const path = join(context.home, '.claude/plugins/praxity', obstacle === 'modified' ? 'skills/studio-editor/SKILL.md' : 'personal.txt');
+  writeFileSync(path, 'PERSONAL CONTENT');
+  const before = readFileSync(join(context.home, '.praxity/toolkit-skills.json'), 'utf8');
+  assert.throws(() => installSkills({ base: context.home, host: 'codex', outputs: outputsFor(context) }), /changed|Unowned/);
+  assert.equal(readFileSync(path, 'utf8'), 'PERSONAL CONTENT');
+  assert.equal(readFileSync(join(context.home, '.praxity/toolkit-skills.json'), 'utf8'), before);
+  assert.equal(existsSync(join(context.home, '.agents/skills/studio-editor/SKILL.md')), false);
+});
+
+test('different hosts may use different scopes and removal cannot erase the other scope', t => {
+  const { context } = fixture(t), outputs = outputsFor(context);
+  installSkills({ base: context.home, otherBase: context.cwd, host: 'claude', outputs });
+  installSkills({ base: context.cwd, otherBase: context.home, host: 'codex', outputs });
+  uninstallSkills({ base: context.cwd, otherBase: context.home, host: 'codex', outputs });
+  assert.deepEqual(readState(context.cwd).hosts, []);
+  assert.deepEqual(readState(context.home).hosts, ['claude']);
+  assert.ok(existsSync(join(context.home, '.claude/skills/studio-editor/SKILL.md')));
+});
+
+test('uninstall through the CLI removes the aliased adapter and keeps other owned and unowned files', async t => {
+  const { context } = fixture(t);
+  for (const host of ['t3', 'codex']) await runCli(['skills', 'install', '--host', host, '--scope', 'project'], context, { print: () => {} });
+  const personal = join(context.cwd, '.claude/skills/personal/SKILL.md'); mkdirSync(join(personal, '..'), { recursive: true }); writeFileSync(personal, 'PERSONAL');
+  await runCli(['skills', 'uninstall', '--host', 't3', '--scope', 'project'], context, { print: () => {} });
+  assert.deepEqual(readState(context.cwd).hosts, ['codex']);
+  assert.ok(existsSync(join(context.cwd, '.agents/skills/studio-editor/SKILL.md')));
+  assert.equal(existsSync(join(context.cwd, '.claude/skills/studio-editor/SKILL.md')), false);
+  assert.equal(readFileSync(personal, 'utf8'), 'PERSONAL');
+  await runCli(['skills', 'uninstall', '--host', 'codex', '--scope', 'project'], context, { print: () => {} });
+  assert.deepEqual(readState(context.cwd).files, {});
+  await runCli(['skills', 'uninstall', '--host', 'codex', '--scope', 'project'], context, { print: () => {} });
+  assert.equal(readFileSync(personal, 'utf8'), 'PERSONAL');
+});
+
+test('selective uninstall retains the exact installed content when the canonical source has changed', t => {
+  const { context } = fixture(t), outputs = outputsFor(context);
+  for (const host of ['claude', 'codex']) installSkills({ base: context.home, host, outputs });
+  const before = readFileSync(join(context.home, '.claude/skills/studio-editor/SKILL.md'));
+  writeFileSync(join(context.root, 'skills/studio-editor/SKILL.md'), '---\nname: studio-editor\ndescription: Changed packaged skill.\n---\nNEW VERSION\n');
+  uninstallSkills({ base: context.home, host: 'codex', outputs: outputsFor(context) });
+  assert.deepEqual(readFileSync(join(context.home, '.claude/skills/studio-editor/SKILL.md')), before);
+  assert.deepEqual(readState(context.home).hosts, ['claude']);
+  assert.equal(existsSync(join(context.home, '.agents/skills/studio-editor/SKILL.md')), false);
+});
+
+for (const obstacle of ['modified', 'unowned']) test(`uninstall refuses ${obstacle} content inside an owned skill before removing files`, t => {
+  const { context } = fixture(t), outputs = outputsFor(context);
+  installSkills({ base: context.home, host: 'claude', outputs });
+  const path = join(context.home, '.claude/skills/studio-editor', obstacle === 'modified' ? 'SKILL.md' : 'personal.txt');
+  writeFileSync(path, 'PERSONAL CONTENT');
+  const before = readFileSync(join(context.home, '.praxity/toolkit-skills.json'), 'utf8');
+  assert.throws(() => uninstallSkills({ base: context.home, host: 'claude', outputs }), /changed|Unowned/);
+  assert.equal(readFileSync(path, 'utf8'), 'PERSONAL CONTENT');
+  assert.equal(readFileSync(join(context.home, '.praxity/toolkit-skills.json'), 'utf8'), before);
+  assert.ok(existsSync(join(context.home, '.claude/skills/install-praxity/SKILL.md')));
+});
+
+for (const hosts of [['claude', 'claude'], ['t3'], ['unknown'], []]) test(`invalid adapter set ${JSON.stringify(hosts)} preserves all owned files`, t => {
+  const { context } = fixture(t), outputs = outputsFor(context);
+  installSkills({ base: context.home, host: 'claude', outputs });
+  const state = readState(context.home);
+  writeFileSync(join(context.home, '.praxity/toolkit-skills.json'), JSON.stringify({ ...state, hosts }));
+  assert.throws(() => uninstallSkills({ base: context.home, host: 'claude', outputs }), /adapter|adapters/);
+  assert.ok(existsSync(join(context.home, '.claude/skills/studio-editor/SKILL.md')));
+});
+
+test('Codex refuses a same-name legacy .codex skill while preserving its bytes', t => {
+  const { context } = fixture(t);
+  const path = join(context.home, '.codex/skills/studio-editor/SKILL.md'); mkdirSync(join(path, '..'), { recursive: true }); writeFileSync(path, 'PERSONAL');
+  assert.throws(() => installSkills({ base: context.home, host: 'codex', outputs: outputsFor(context) }), /Unowned competing/);
+  assert.equal(readFileSync(path, 'utf8'), 'PERSONAL');
+  assert.equal(existsSync(join(context.home, '.agents/skills/studio-editor/SKILL.md')), false);
+});
+
+test('Codex installation and removal leave an unrelated symlinked Claude home alone', t => {
+  const { context } = fixture(t), outputs = outputsFor(context);
+  const personal = join(context.root, 'personal-claude'); mkdirSync(personal); writeFileSync(join(personal, 'notes.txt'), 'PERSONAL');
+  symlinkSync(personal, join(context.home, '.claude'), process.platform === 'win32' ? 'junction' : 'dir');
+  installSkills({ base: context.home, host: 'codex', outputs });
+  uninstallSkills({ base: context.home, host: 'codex', outputs });
+  assert.equal(readFileSync(join(personal, 'notes.txt'), 'utf8'), 'PERSONAL');
+  assert.deepEqual(readState(context.home).files, {});
+});
+
+for (const operation of ['migration', 'uninstall']) for (const phase of ['stage', 'remove']) test(`${operation} recovers a crash at the ${phase} journal commit`, t => {
+  const { context } = fixture(t), outputs = outputsFor(context);
+  if (operation === 'migration') legacyInstall(context, 'claude');
+  else for (const host of ['claude', 'codex']) installSkills({ base: context.home, host, outputs });
+  const ledger = join(context.home, '.praxity/toolkit-skills.json'), preload = join(context.root, 'commit-crash.mjs');
+  writeFileSync(preload, `import fs from 'node:fs'; import {syncBuiltinESMExports} from 'node:module';
+    const original=fs.renameSync; fs.renameSync=function(source,dest,...args){const result=original(source,dest,...args); if(String(dest)===${JSON.stringify(ledger)} && JSON.parse(fs.readFileSync(dest)).transaction?.phase===${JSON.stringify(phase)}) process.exit(77); return result;}; syncBuiltinESMExports();`);
+  const method = operation === 'migration' ? 'installSkills' : 'uninstallSkills';
+  const code = `import {buildAdapters,${method}} from ${JSON.stringify(pathToFileURL(join(repository, 'src/skills.mjs')).href)};
+    ${method}({base:${JSON.stringify(context.home)},host:'claude',outputs:buildAdapters({source:${JSON.stringify(join(context.root, 'skills'))},packVersion:'0.1.0'})});`;
+  const killed = spawnSync(process.execPath, ['--import', pathToFileURL(preload).href, '--input-type=module', '-e', code], { encoding: 'utf8', timeout: 20_000 });
+  assert.equal(killed.status, 77, killed.stderr);
+  const interrupted = readState(context.home); assert.equal(interrupted.transaction.phase, phase);
+  (operation === 'migration' ? installSkills : uninstallSkills)({ base: context.home, host: 'claude', outputs });
+  const state = readState(context.home);
+  assert.deepEqual(state.hosts, operation === 'migration' ? ['claude'] : ['codex']);
+  assert.equal(state.transaction, undefined); assert.equal(state.lock, undefined);
+  assert.equal(existsSync(join(context.home, '.praxity/toolkit-skills.lock')), false);
+  assert.equal(existsSync(join(context.home, '.claude/skills/studio-editor/SKILL.md')), operation === 'migration');
+  assert.equal(existsSync(join(context.home, '.claude/plugins/praxity/skills/studio-editor/SKILL.md')), false);
+  if (operation === 'uninstall') assert.ok(existsSync(join(context.home, '.agents/skills/studio-editor/SKILL.md')));
+});
+
+for (const operation of ['migration', 'uninstall']) for (const modified of [false, true]) test(`${operation} ${modified ? 'preserves changed survivors' : 'recovers'} after its first owned deletion`, t => {
+  const { context } = fixture(t), outputs = outputsFor(context);
+  if (operation === 'migration') legacyInstall(context, 'claude');
+  else for (const host of ['claude', 'codex']) installSkills({ base: context.home, host, outputs });
+  const preload = join(context.root, 'delete-crash.mjs');
+  const removedRoot = join(context.home, operation === 'migration' ? '.claude/plugins/praxity/skills' : '.claude/skills');
+  writeFileSync(preload, `import fs from 'node:fs'; import {syncBuiltinESMExports} from 'node:module';
+    const original=fs.unlinkSync; fs.unlinkSync=function(path,...args){const result=original(path,...args); if(String(path).startsWith(${JSON.stringify(removedRoot)})) process.exit(77); return result;}; syncBuiltinESMExports();`);
+  const method = operation === 'migration' ? 'installSkills' : 'uninstallSkills';
+  const code = `import {buildAdapters,${method}} from ${JSON.stringify(pathToFileURL(join(repository, 'src/skills.mjs')).href)};
+    ${method}({base:${JSON.stringify(context.home)},host:'claude',outputs:buildAdapters({source:${JSON.stringify(join(context.root, 'skills'))},packVersion:'0.1.0'})});`;
+  const killed = spawnSync(process.execPath, ['--import', pathToFileURL(preload).href, '--input-type=module', '-e', code], { encoding: 'utf8', timeout: 20_000 });
+  assert.equal(killed.status, 77, killed.stderr);
+  assert.equal(readState(context.home).transaction.phase, 'remove');
+  assert.equal(existsSync(join(removedRoot, 'install-praxity/SKILL.md')), false);
+  const survivor = join(removedRoot, 'studio-editor/SKILL.md');
+  if (modified) {
+    writeFileSync(survivor, 'PERSONAL');
+    assert.throws(() => (operation === 'migration' ? installSkills : uninstallSkills)({ base: context.home, host: 'claude', outputs }), /Owned adapter changed/);
+    assert.equal(readFileSync(survivor, 'utf8'), 'PERSONAL');
+    assert.equal(readState(context.home).transaction.phase, 'remove');
+  } else {
+    (operation === 'migration' ? installSkills : uninstallSkills)({ base: context.home, host: 'claude', outputs });
+    assert.deepEqual(readState(context.home).hosts, operation === 'migration' ? ['claude'] : ['codex']);
+    assert.equal(existsSync(survivor), false);
+    assert.equal(readState(context.home).transaction, undefined);
+  }
+});
+
+for (const host of ['t3', 'claude', 'codex']) test(`an interrupted schema-1 ${host} transaction recovers before adding the new adapter`, t => {
+  const { context } = fixture(t);
+  const files = legacyInstall(context, host), next = readState(context.home);
+  // A durable old-format stage intent, before its first staged write.
+  for (const name of files.keys()) unlinkSync(join(context.home, name));
+  const lock = { pid: 2147483647, token: '11111111-1111-1111-1111-111111111111' };
+  writeFileSync(join(context.home, '.praxity/toolkit-skills.json'), JSON.stringify({
+    owner: 'praxity-toolkit', files: {}, transaction: {
+      phase: 'stage', previous: {}, next, lock,
+      staged: [...files.keys()].map(name => ({ name, temp: `${name}.praxity-11111111-1111-1111-1111-111111111111.tmp` })),
+    },
+  }));
+  installSkills({ base: context.home, host: 'codex', outputs: outputsFor(context) });
+  const state = readState(context.home);
+  assert.deepEqual(state.hosts, host === 'codex' ? ['codex'] : ['claude', 'codex']);
+  assert.equal(state.transaction, undefined);
+  assert.ok(existsSync(join(context.home, '.agents/skills/studio-editor/SKILL.md')));
+  assert.equal(existsSync(join(context.home, '.claude/plugins/praxity/.claude-plugin/plugin.json')), false);
+});
 
 for (const modified of [false, true]) test(`a journaled skill temporary ${modified ? 'preserves changed bytes' : 'resumes a partial write'} without losing the previous adapter`, t => {
   const { context } = fixture(t), outputs = outputsFor(context);
@@ -33,12 +225,12 @@ for (const modified of [false, true]) test(`a journaled skill temporary ${modifi
     return;
   }
   installSkills({ base: context.home, host: 'codex', outputs });
-  assert.equal(existsSync(join(context.home, '.claude/skills/install-praxity/SKILL.md')), false);
+  assert.equal(existsSync(join(context.home, '.claude/skills/install-praxity/SKILL.md')), true);
   assert.equal(readFileSync(join(context.home, '.agents/skills/install-praxity/SKILL.md'), 'utf8'), outputs.codex.get('.agents/skills/install-praxity/SKILL.md').toString());
   assert.equal(JSON.parse(readFileSync(join(context.home, '.praxity/toolkit-skills.json'), 'utf8')).transaction, undefined);
 });
 
-for (const boundary of ['directory', 'pid', 'reacquired pid']) test(`skills switch recovers a crash after its ${boundary} lock write`, t => {
+for (const boundary of ['directory', 'pid', 'reacquired pid']) test(`skills addition recovers a crash after its ${boundary} lock write`, t => {
   const { context } = fixture(t), outputs = outputsFor(context);
   installSkills({ base: context.home, host: 't3', outputs });
   const ledger = join(context.home, '.praxity/toolkit-skills.json');
@@ -58,9 +250,9 @@ for (const boundary of ['directory', 'pid', 'reacquired pid']) test(`skills swit
   assert.ok(existsSync(join(context.home, '.praxity/toolkit-skills.lock')));
   installSkills({ base: context.home, host: 'codex', outputs });
   const state = JSON.parse(readFileSync(ledger, 'utf8'));
-  assert.equal(state.host, 'codex'); assert.equal(state.transaction, undefined); assert.equal(state.lock, undefined);
+  assert.deepEqual(state.hosts, ['claude', 'codex']); assert.equal(state.transaction, undefined); assert.equal(state.lock, undefined);
   assert.ok(existsSync(join(context.home, '.agents/skills/install-praxity/SKILL.md')));
-  assert.equal(existsSync(join(context.home, '.claude/skills/install-praxity/SKILL.md')), false);
+  assert.equal(existsSync(join(context.home, '.claude/skills/install-praxity/SKILL.md')), true);
   assert.equal(existsSync(join(context.home, '.praxity/toolkit-skills.lock')), false);
 });
 test('canonical adapter generation matches reviewed golden files', t => {
@@ -68,16 +260,15 @@ test('canonical adapter generation matches reviewed golden files', t => {
   const outputs = outputsFor(context);
   const snapshot = Object.fromEntries(Object.entries(outputs).map(([host, files]) => [host, Object.fromEntries([...files].map(([name, bytes]) => [name, createHash('sha256').update(bytes).digest('hex')]))]));
   assert.deepEqual(snapshot, JSON.parse(readFileSync(join(repository, 'test/golden/adapters.json'), 'utf8')));
-  const manifest = JSON.parse(outputs.claude.get('.claude/plugins/praxity/.claude-plugin/plugin.json'));
-  assert.equal(manifest.name, 'praxity'); assert.equal(manifest.version, '0.1.0');
-  assert.equal(Object.hasOwn(manifest, 'license'), false);
+  assert.deepEqual(Object.keys(outputs), ['claude', 'codex']);
+  assert.equal([...outputs.claude.keys()].some(name => name.includes('/plugins/')), false);
 });
-test('generator CLI emits plugin and portable host paths', t => {
+test('generator CLI emits two portable host layouts', t => {
   const { root } = fixture(t);
   const output = join(root, 'built adapters');
   const result = spawnSync(process.execPath, [join(repository, 'scripts/build-adapters.mjs'), '--output', output], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
-  for (const path of ['t3/.claude/skills/install-praxity/SKILL.md', 'codex/.agents/skills/studio-editor/SKILL.md', 'claude/.claude/plugins/praxity/.claude-plugin/plugin.json']) assert.ok(existsSync(join(output, path)));
+  for (const path of ['claude/.claude/skills/install-praxity/SKILL.md', 'codex/.agents/skills/studio-editor/SKILL.md']) assert.ok(existsSync(join(output, path)));
   const rerun = spawnSync(process.execPath, [join(repository, 'scripts/build-adapters.mjs'), '--output', output], { encoding: 'utf8' });
   assert.equal(rerun.status, 1); assert.match(rerun.stderr, /already exists/);
 });
@@ -90,7 +281,7 @@ test('tool-owned skills and references are collected unchanged', t => {
   writeFileSync(join(tool, 'references/legal.txt'), 'Required notice.\n');
   const outputs = buildAdapters({ source: join(context.root, 'skills'), tools: [tool], packVersion: '0.1.0' });
   assert.equal(outputs.codex.get('.agents/skills/praxity-trace/SKILL.md').toString(), skill);
-  assert.equal(outputs.t3.get('.claude/skills/praxity-trace/references/legal.txt').toString(), 'Required notice.\n');
+  assert.equal(outputs.claude.get('.claude/skills/praxity-trace/references/legal.txt').toString(), 'Required notice.\n');
   assert.throws(() => buildAdapters({ source: join(context.root, 'skills'), tools: [tool, tool], packVersion: '0.1.0' }), /Duplicate skill/);
 });
 test('portable CRLF skills retain their bytes and require real frontmatter', t => {
@@ -103,28 +294,29 @@ test('portable CRLF skills retain their bytes and require real frontmatter', t =
   writeFileSync(join(tool, 'SKILL.md'), '---\nname: praxity-check\n---\nNo description.\n');
   assert.throws(() => buildAdapters(options), /Invalid skill frontmatter/);
 });
-test('install is idempotent and switching adapters removes only owned copies', t => {
+test('install is idempotent and aliases share one adapter while distinct hosts coexist', t => {
   const { context } = fixture(t);
   const options = { base: context.home, otherBase: context.cwd, outputs: outputsFor(context) };
   installSkills({ ...options, host: 't3' });
   installSkills({ ...options, host: 't3' });
   assert.ok(existsSync(join(context.home, '.claude/skills/studio-editor/SKILL.md')));
   installSkills({ ...options, host: 'claude' });
-  assert.equal(existsSync(join(context.home, '.claude/skills/studio-editor/SKILL.md')), false);
-  assert.ok(existsSync(join(context.home, '.claude/plugins/praxity/.claude-plugin/plugin.json')));
+  assert.ok(existsSync(join(context.home, '.claude/skills/studio-editor/SKILL.md')));
+  assert.equal(existsSync(join(context.home, '.claude/plugins/praxity/.claude-plugin/plugin.json')), false);
   installSkills({ ...options, host: 'codex' });
   assert.equal(existsSync(join(context.home, '.claude/plugins/praxity/skills/studio-editor/SKILL.md')), false);
   assert.ok(existsSync(join(context.home, '.agents/skills/studio-editor/SKILL.md')));
+  assert.deepEqual(JSON.parse(readFileSync(join(context.home, '.praxity/toolkit-skills.json'))).hosts, ['claude', 'codex']);
 });
-test('unowned files and competing host skills are refused before mutation', t => {
+test('unowned skills for a different host coexist; same-host overwrite is refused', t => {
   const { context } = fixture(t);
   const existing = join(context.home, '.claude/skills/install-praxity/SKILL.md');
   mkdirSync(join(context.home, '.claude/skills/install-praxity'), { recursive: true });
   writeFileSync(existing, 'My skill');
   const options = { base: context.home, host: 'codex', outputs: outputsFor(context) };
-  assert.throws(() => installSkills(options), /Unowned competing/);
+  installSkills(options);
   assert.equal(readFileSync(existing, 'utf8'), 'My skill');
-  assert.equal(existsSync(join(context.home, '.agents/skills/install-praxity/SKILL.md')), false);
+  assert.equal(existsSync(join(context.home, '.agents/skills/install-praxity/SKILL.md')), true);
   assert.throws(() => installSkills({ ...options, host: 't3' }), /Unowned adapter/);
 });
 test('modified owned files and malicious ownership paths are preserved', t => {
@@ -158,14 +350,15 @@ test('unowned plugin components and untracked other-scope skills block competing
   assert.throws(() => installSkills({ base: context.home, host: 'claude', outputs }), /Unowned competing plugin/);
   mkdirSync(join(context.cwd, '.agents/skills/studio-editor'), { recursive: true });
   writeFileSync(join(context.cwd, '.agents/skills/studio-editor/SKILL.md'), 'Project skill');
-  assert.throws(() => installSkills({ base: context.home, otherBase: context.cwd, host: 't3', outputs }), /other scope/);
+  assert.throws(() => installSkills({ base: context.home, otherBase: context.cwd, host: 'codex', outputs }), /other scope/);
 });
-test('launcher installs selected scope; doctor checks picker and plugin files', async t => {
+test('launcher installs selected scope; doctor checks two physical adapters', async t => {
   const { context } = fixture(t);
   await runCli(['skills', 'install', '--host', 't3', '--scope', 'project'], context, { print: () => {} });
   const result = doctor(context, () => ({ code: 0, stdout: 'v24.21.0', stderr: '' }));
-  assert.equal(result.items.find(item => item.id === 'host.t3.project').status, 'ok');
-  assert.equal(result.items.find(item => item.id === 'host.claude.project').status, 'not-installed');
+  assert.equal(result.items.find(item => item.id === 'host.claude.project').status, 'ok');
+  assert.equal(result.items.find(item => item.id === 'host.codex.project').status, 'not-installed');
+  assert.equal(result.items.some(item => item.id.startsWith('host.t3.')), false);
 });
 
 for (const name of ['.claude/skills/../../Documents/notes.txt', '.agents/skills/../../../Documents/notes.txt', '/Documents/notes.txt', 'C:/Documents/notes.txt', '.claude/skills/../skills/studio-editor/SKILL.md']) test(`skills ledger refuses noncanonical adapter path ${name}`, t => {
@@ -194,7 +387,7 @@ for (const obstacle of ['.praxity/toolkit-skills.json.tmp', '.claude/plugins/pra
   assert.ok(existsSync(join(context.home, '.claude/skills/install-praxity/SKILL.md')));
 });
 
-for (const phase of ['stage', 'remove']) test(`interrupted adapter switch recovers after ${phase} without competing copies`, async t => {
+for (const phase of ['stage', 'remove']) test(`interrupted adapter addition recovers after ${phase} without competing copies`, async t => {
   const { context } = fixture(t);
   const references = join(context.root, 'skills/install-praxity/references'); mkdirSync(references);
   for (let i = 0; i < 300; i++) writeFileSync(join(references, `${i}.txt`), `fixture ${i}\n`);
@@ -213,7 +406,7 @@ for (const phase of ['stage', 'remove']) test(`interrupted adapter switch recove
   });
   try {
     await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('Switch child did not finish')); }, 20_000);
+      const timeout = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('Adapter child did not finish')); }, 20_000);
       child.on('error', error => { clearTimeout(timeout); reject(error); });
       child.on('exit', () => { clearTimeout(timeout); resolve(); });
     });
@@ -221,8 +414,8 @@ for (const phase of ['stage', 'remove']) test(`interrupted adapter switch recove
   assert.ok(killed, `Did not observe durable ${phase} transaction: ${stderr}`);
   installSkills({ ...options, host: 'codex' });
   const state = JSON.parse(readFileSync(join(context.home, '.praxity/toolkit-skills.json'), 'utf8'));
-  assert.equal(state.host, 'codex'); assert.equal(state.transaction, undefined);
+  assert.deepEqual(state.hosts, ['claude', 'codex']); assert.equal(state.transaction, undefined);
   assert.ok(existsSync(join(context.home, '.agents/skills/install-praxity/SKILL.md')));
-  assert.equal(existsSync(join(context.home, '.claude/skills/install-praxity/SKILL.md')), false);
+  assert.equal(existsSync(join(context.home, '.claude/skills/install-praxity/SKILL.md')), true);
   assert.equal(existsSync(join(context.home, '.praxity/toolkit-skills.lock')), false);
 });

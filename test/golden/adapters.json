@@ -1,15 +1,10 @@
 {
-  "t3": {
-    ".claude/skills/install-praxity/SKILL.md": "7909ba0012f1a59e975da4dc82fb9b49dfa6a7607edf50855426041069ac3746",
+  "claude": {
+    ".claude/skills/install-praxity/SKILL.md": "131d1e8287893f1f2dbe04bca91af672c3c54f8865af2d52aca1537ae08d3030",
     ".claude/skills/studio-editor/SKILL.md": "6da7ddd29e3e537b6b10111b249e550c9485f99f9a9f3b08027c2437ba4bbfe5"
   },
   "codex": {
-    ".agents/skills/install-praxity/SKILL.md": "7909ba0012f1a59e975da4dc82fb9b49dfa6a7607edf50855426041069ac3746",
+    ".agents/skills/install-praxity/SKILL.md": "131d1e8287893f1f2dbe04bca91af672c3c54f8865af2d52aca1537ae08d3030",
     ".agents/skills/studio-editor/SKILL.md": "6da7ddd29e3e537b6b10111b249e550c9485f99f9a9f3b08027c2437ba4bbfe5"
-  },
-  "claude": {
-    ".claude/plugins/praxity/skills/install-praxity/SKILL.md": "7909ba0012f1a59e975da4dc82fb9b49dfa6a7607edf50855426041069ac3746",
-    ".claude/plugins/praxity/skills/studio-editor/SKILL.md": "6da7ddd29e3e537b6b10111b249e550c9485f99f9a9f3b08027c2437ba4bbfe5",
-    ".claude/plugins/praxity/.claude-plugin/plugin.json": "800bac1306fbe08bb9ec6b60dfbb2a7cdc37c28d1e2102e3b3300185cef7f6fa"
   }
 }

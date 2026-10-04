@@ -42,7 +42,7 @@ test('doctor aggregates ok, failed, declined and not-installed through its inter
   assert.equal(status['tool.check.browser'], 'declined'); assert.equal(status['tool.check.java'], 'ok');
   assert.equal(status['tool.check.verapdf'], 'failed'); assert.equal(status['tool.import'], 'not-installed');
   for (const id of ['studio', 'trace', 'print']) assert.equal(status[`tool.${id}`], 'ok');
-  assert.equal(status['host.t3.user'], 'not-installed');
+  assert.equal(status['host.claude.user'], 'not-installed');
   assert.equal(result.items.find(item => item.id === 'tool.check.verapdf').fix, 'praxity setup check verapdf');
 });
 test('missing optional components are absent until the user explicitly refuses them', t => {

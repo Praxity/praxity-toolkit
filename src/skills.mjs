@@ -1,14 +1,16 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, readdirSync, mkdirSync, writeFileSync, unlinkSync, rmdirSync, renameSync, realpathSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep, isAbsolute, win32 } from 'node:path';
+import { loadSchema, validateSchema } from './schema.mjs';
 
 export const adapters = {
-  t3: { skills: '.claude/skills', plugin: null },
+  claude: { skills: '.claude/skills', plugin: null },
   codex: { skills: '.agents/skills', plugin: null },
-  claude: { skills: '.claude/plugins/praxity/skills', plugin: '.claude/plugins/praxity/.claude-plugin/plugin.json' },
 };
+const legacyClaude = { skills: '.claude/plugins/praxity/skills', plugin: '.claude/plugins/praxity/.claude-plugin/plugin.json' };
+const ownershipAdapters = [...Object.values(adapters), legacyClaude];
+const canonicalHost = host => host === 't3' ? 'claude' : host;
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
-const statePath = base => join(base, '.praxity', 'toolkit-skills.json');
 
 function filesIn(directory, prefix = '') {
   const files = new Map();
@@ -43,7 +45,7 @@ export function buildAdapters({ source, tools = [], packVersion }) {
       if (item.isDirectory() && existsSync(join(tool, item.name, 'SKILL.md'))) collect(join(tool, item.name));
     }
   }
-  return Object.fromEntries(Object.entries(adapters).map(([host, adapter]) => {
+  const generate = adapter => {
     const output = new Map();
     for (const [name, files] of [...skills].sort(([a], [b]) => a.localeCompare(b))) {
       for (const [file, bytes] of files) output.set(`${adapter.skills}/${name}/${file}`, bytes);
@@ -52,13 +54,18 @@ export function buildAdapters({ source, tools = [], packVersion }) {
       name: 'praxity', version: packVersion, description: 'Local Praxity tools for learning designers',
       author: { name: 'Praxity' },
     }, null, 2) + '\n'));
-    return [host, output];
-  }));
+    return output;
+  };
+  const outputs = Object.fromEntries(Object.entries(adapters).map(([host, adapter]) => [host, generate(adapter)]));
+  // Only recovery of a schema-1 transaction needs the former plugin bytes.
+  // Non-enumerable so the generator never publishes a third adapter.
+  Object.defineProperty(outputs, 'legacyClaude', { value: generate(legacyClaude) });
+  return outputs;
 }
 
 function contained(base, name, adapterOnly = false) {
   if (typeof name !== 'string' || isAbsolute(name) || win32.isAbsolute(name) || name.includes('\\') || name.split('/').some(part => !part || part === '.' || part === '..')) throw new Error(`Unsafe ownership path: ${name}`);
-  if (adapterOnly && !Object.values(adapters).some(adapter => name.startsWith(`${adapter.skills}/`) || name === adapter.plugin)) throw new Error(`Unsafe ownership path: ${name}`);
+  if (adapterOnly && !ownershipAdapters.some(adapter => name.startsWith(`${adapter.skills}/`) || name === adapter.plugin)) throw new Error(`Unsafe ownership path: ${name}`);
   const target = resolve(base, name);
   const rel = relative(base, target);
   if (!rel || rel.startsWith(`..${sep}`) || rel === '..') throw new Error(`Unsafe ownership path: ${name}`);
@@ -76,15 +83,18 @@ function contained(base, name, adapterOnly = false) {
   return target;
 }
 
-export function installSkills({ base, otherBase, host, outputs }) {
-  if (!adapters[host]) throw new Error('Host must be t3, claude or codex');
+export function installSkills(options) {
+  return changeSkills({ ...options, remove: false });
+}
+
+export function uninstallSkills(options) {
+  return changeSkills({ ...options, remove: true });
+}
+
+function changeSkills({ base, otherBase, host, outputs, remove }) {
+  host = canonicalHost(host);
+  if (!Object.hasOwn(adapters, host)) throw new Error('Host must be t3, claude or codex');
   base = realpathSync(base);
-  if (otherBase && resolve(otherBase) !== base && existsSync(statePath(otherBase))) throw new Error('Toolkit skills already use the other scope. Use that scope to avoid competing copies.');
-  if (otherBase && resolve(otherBase) !== base) {
-    for (const files of Object.values(outputs)) for (const name of files.keys()) {
-      if (name.endsWith('/SKILL.md') && existsSync(join(otherBase, name))) throw new Error(`Competing skill in the other scope: ${join(otherBase, name)}`);
-    }
-  }
   const ledger = contained(base, '.praxity/toolkit-skills.json');
   contained(base, '.praxity/toolkit-skills.json.tmp');
   if (existsSync(`${ledger}.tmp`)) throw new Error(`Unowned skills metadata temporary preserved: ${ledger}.tmp`);
@@ -100,12 +110,27 @@ export function installSkills({ base, otherBase, host, outputs }) {
   };
   if (state.owner !== 'praxity-toolkit') throw new Error('Unrecognized skills ownership manifest');
   validateFiles(state.files);
+  const errors = validateSchema(state, loadSchema('skills-ownership'));
+  if (errors.length) throw new Error(`Invalid skills adapter ownership: ${errors.join('; ')}`);
+  const hostsOf = record => {
+    if (record.schemaVersion === 2) {
+      if (new Set(record.hosts).size !== record.hosts.length) throw new Error('Invalid skills adapter set');
+      for (const name of Object.keys(record.files)) if (!record.hosts.some(value => name.startsWith(`${adapters[value].skills}/`))) throw new Error('Skills files do not belong to the recorded adapters');
+      return record.hosts;
+    }
+    if (record.host === undefined) return [];
+    const adapter = record.host === 'claude' ? legacyClaude : adapters[canonicalHost(record.host)];
+    if (Object.keys(record.files).some(name => !name.startsWith(`${adapter.skills}/`) && name !== adapter.plugin)) throw new Error('Skills files do not belong to the recorded adapter');
+    return [canonicalHost(record.host)];
+  };
+  hostsOf(state);
   const validLock = record => Number.isSafeInteger(record?.pid) && record.pid > 0 && typeof record.token === 'string' && /^[a-f0-9-]{36}$/.test(record.token);
   if (state.lock && !validLock(state.lock)) throw new Error('Invalid skills lock intent');
   if (state.transaction) {
     const tx = state.transaction;
     validateFiles(tx.previous); validateFiles(tx.next?.files);
-    if (!adapters[tx.next.host] || !['stage', 'remove'].includes(tx.phase) || !Array.isArray(tx.staged) || tx.staged.length !== Object.keys(tx.next.files).length || !validLock(tx.lock)) throw new Error('Invalid skills transaction');
+    hostsOf(tx.next);
+    if (!['stage', 'remove'].includes(tx.phase) || !Array.isArray(tx.staged) || tx.staged.length !== Object.keys(tx.next.files).length || !validLock(tx.lock)) throw new Error('Invalid skills transaction');
     const seen = new Set();
     for (const entry of tx.staged) {
       contained(base, entry.name, true); contained(base, entry.temp);
@@ -161,26 +186,33 @@ export function installSkills({ base, otherBase, host, outputs }) {
     const partial = pendingBytes && allowed.includes(digest(pendingBytes)) && bytes.length < pendingBytes.length && bytes.equals(pendingBytes.subarray(0, bytes.length));
     if (!allowed.includes(digest(bytes)) && !partial) throw new Error(`Owned adapter changed; preserve or move it before retrying: ${path}`);
   };
-  const finish = tx => {
-    const ownedNames = new Set([...Object.keys(tx.previous), ...Object.keys(tx.next.files), ...tx.staged.map(entry => entry.temp)]);
+  const checkUnowned = ownedNames => {
     const names = [...ownedNames].filter(name => name.endsWith('/SKILL.md')).map(name => name.split('/').at(-2));
-    for (const adapter of Object.values(adapters)) for (const name of names) {
+    for (const adapter of ownershipAdapters.filter(adapter => [...ownedNames].some(name => name.startsWith(`${adapter.skills}/`)))) for (const name of names) {
       const directory = contained(base, `${adapter.skills}/${name}`);
       if (existsSync(directory)) for (const file of filesIn(directory).keys()) {
         const key = relative(base, join(directory, file)).split(sep).join('/');
         if (!ownedNames.has(key)) throw new Error(`Unowned adapter file preserved during recovery: ${key}`);
       }
     }
-    const pluginRoot = contained(base, '.claude/plugins/praxity');
-    if (existsSync(pluginRoot)) for (const file of filesIn(pluginRoot).keys()) {
-      if (!ownedNames.has(`.claude/plugins/praxity/${file}`)) throw new Error(`Unowned plugin file preserved during recovery: ${file}`);
+    if ([...ownedNames].some(name => name.startsWith('.claude/plugins/praxity/'))) {
+      const pluginRoot = contained(base, '.claude/plugins/praxity');
+      if (existsSync(pluginRoot)) for (const file of filesIn(pluginRoot).keys()) {
+        if (!ownedNames.has(`.claude/plugins/praxity/${file}`)) throw new Error(`Unowned plugin file preserved during recovery: ${file}`);
+      }
     }
+  };
+  const finish = tx => {
+    const ownedNames = new Set([...Object.keys(tx.previous), ...Object.keys(tx.next.files), ...tx.staged.map(entry => entry.temp)]);
+    checkUnowned(ownedNames);
     // Validate the entire recoverable transaction before its first mutation.
     for (const name of new Set([...Object.keys(tx.previous), ...Object.keys(tx.next.files)])) {
       const allowed = [tx.previous[name], tx.next.files[name]].filter(Boolean);
       checkHash(name, allowed, tx.phase === 'remove' ? !Object.hasOwn(tx.next.files, name) : !Object.hasOwn(tx.previous, name));
     }
-    const generated = outputs[tx.next.host];
+    const generated = tx.next.schemaVersion === 2
+      ? new Map(tx.next.hosts.flatMap(value => [...outputs[value]]))
+      : outputs[tx.next.host === 'claude' ? 'legacyClaude' : canonicalHost(tx.next.host)];
     for (const entry of tx.staged) checkHash(entry.temp, [tx.next.files[entry.name]], true, false, tx.phase === 'stage' ? generated.get(entry.name) : undefined);
     if (tx.phase === 'stage') {
       for (const entry of tx.staged) {
@@ -231,36 +263,52 @@ export function installSkills({ base, otherBase, host, outputs }) {
       // Recovery completed its previous switch; acquire a new lock for this one.
       acquire();
     }
-    const desired = outputs[host];
+    const hosts = new Set(hostsOf(state));
+    if (remove) hosts.delete(host); else hosts.add(host);
     for (const [name, hash] of Object.entries(state.files)) checkHash(name, [hash]);
+    // Removing one adapter keeps the exact installed bytes of the others.
+    // Legacy plugin ownership still needs the migration to current layouts.
+    const desired = remove && state.schemaVersion === 2
+      ? new Map(Object.keys(state.files).filter(name => [...hosts].some(value => name.startsWith(`${adapters[value].skills}/`))).map(name => [name, readFileSync(contained(base, name, true))]))
+      : new Map([...hosts].sort().flatMap(value => [...outputs[value]]));
+    // Distinct hosts can use distinct scopes; only visible copies compete.
+    const roots = [...hosts].map(value => adapters[value].skills);
+    if (hosts.has('claude')) roots.push(legacyClaude.skills);
+    if (hosts.has('codex')) roots.push('.codex/skills');
+    const names = new Set([...desired.keys()].filter(name => name.endsWith('/SKILL.md')).map(name => name.split('/').at(-2)));
+    if (otherBase && resolve(otherBase) !== base) for (const root of roots) for (const name of names) {
+      const path = contained(realpathSync(otherBase), `${root}/${name}/SKILL.md`);
+      if (existsSync(path)) throw new Error(`Competing skill in the other scope: ${path}`);
+    }
     for (const name of desired.keys()) {
       const path = contained(base, name, true);
       if (existsSync(path) && !Object.hasOwn(state.files, name)) throw new Error(`Unowned adapter file; refusing overwrite: ${path}`);
     }
-    // Preflight every host, including disabled adapters, before writing anything.
-    for (const [candidate, adapter] of Object.entries(adapters)) {
-      const root = contained(base, adapter.skills);
-      for (const name of new Set([...desired.keys()].filter(file => file.includes('/SKILL.md')).map(file => file.split('/').at(-2)))) {
+    // Check only roots visible to the selected adapters, including legacy roots.
+    for (const skillRoot of roots) {
+      const root = contained(base, skillRoot);
+      for (const name of names) {
         const directory = join(root, name);
         if (existsSync(directory)) for (const file of filesIn(directory).keys()) {
           const key = relative(base, join(directory, file)).split(sep).join('/');
-          if (!Object.hasOwn(state.files, key)) throw new Error(`Unowned competing ${candidate} skill: ${directory}`);
+          if (!Object.hasOwn(state.files, key)) throw new Error(`Unowned competing skill: ${directory}`);
         }
       }
     }
     const pluginRoot = join(base, '.claude/plugins/praxity');
-    if (existsSync(pluginRoot)) for (const file of filesIn(pluginRoot).keys()) {
+    if ((hosts.has('claude') || Object.keys(state.files).some(name => name.startsWith('.claude/plugins/praxity/'))) && existsSync(pluginRoot)) for (const file of filesIn(pluginRoot).keys()) {
       const key = `.claude/plugins/praxity/${file}`;
       if (!Object.hasOwn(state.files, key)) throw new Error(`Unowned competing plugin file: ${join(pluginRoot, file)}`);
     }
     const hashes = Object.fromEntries([...desired].map(([name, bytes]) => [name, digest(bytes)]));
-    const next = { owner: 'praxity-toolkit', schemaVersion: 1, host, files: hashes };
+    checkUnowned(new Set([...Object.keys(state.files), ...desired.keys()]));
+    const next = { owner: 'praxity-toolkit', schemaVersion: 2, hosts: [...hosts].sort(), files: hashes };
     const transaction = { phase: 'stage', previous: state.files, next, lock: lockRecord,
       staged: [...desired.keys()].map(name => ({ name, temp: `${name}.praxity-${randomUUID()}.tmp` })) };
     // Record the intended paths and hashes before creating staged adapter files.
     writeState({ ...state, transaction });
     finish(transaction);
-    return { host, files: Object.keys(hashes), pluginDirectory: host === 'claude' ? join(base, '.claude/plugins/praxity') : null };
+    return { host, hosts: next.hosts, files: Object.keys(hashes) };
   } finally {
     release();
     if (!state.transaction && state.lock?.token === lockRecord.token) {
@@ -271,7 +319,7 @@ export function installSkills({ base, otherBase, host, outputs }) {
 }
 
 export function skillPresence({ base, host, names }) {
-  const adapter = adapters[host];
+  const adapter = adapters[canonicalHost(host)];
   const expected = names.map(name => join(base, adapter.skills, name, 'SKILL.md'));
   if (adapter.plugin) expected.push(join(base, adapter.plugin));
   return expected.every(path => existsSync(path));
