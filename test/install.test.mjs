@@ -235,3 +235,31 @@ test('modified installed files survive uninstall', t => {
   assert.equal(readFileSync(file, 'utf8'), 'USER EDIT');
 });
 
+test('manifest symlink refuses before curl can overwrite an outside file', t => {
+  const setup = installation(t), victim = join(setup.root, 'outside.json');
+  writeFileSync(victim, 'USER FILE'); mkdirSync(setup.toolkit, { recursive: true });
+  symlinkSync(victim, join(setup.toolkit, '.manifest.json'), 'file');
+  const r = setup.install(); assert.notEqual(r.status, 0);
+  assert.equal(readFileSync(victim, 'utf8'), 'USER FILE');
+});
+test('unowned fixed activation temporary file is preserved before activation', t => {
+  const setup = installation(t), file = join(setup.toolkit, 'active.tmp');
+  mkdirSync(setup.toolkit, { recursive: true }); writeFileSync(file, 'USER FILE');
+  const r = setup.install(); assert.notEqual(r.status, 0); assert.match(r.stderr, /Unowned|unowned/);
+  assert.equal(readFileSync(file, 'utf8'), 'USER FILE');
+  assert.equal(existsSync(join(setup.toolkit, 'active')), false);
+});
+for (const name of ['active', '.manifest.tsv', '.plan.tsv', '.archive-list', '.archive-links', '.launcher-sha256']) test(`unowned metadata ${name} is refused before replacement`, t => {
+  const setup = installation(t), file = join(setup.toolkit, name);
+  mkdirSync(setup.toolkit, { recursive: true }); writeFileSync(file, 'USER FILE');
+  const r = setup.install(); assert.notEqual(r.status, 0);
+  assert.equal(readFileSync(file, 'utf8'), 'USER FILE');
+});
+test('cache partial symlink cannot overwrite its outside target', t => {
+  const setup = installation(t), victim = join(setup.root, 'outside'); writeFileSync(victim, 'USER FILE');
+  mkdirSync(join(setup.toolkit, '.cache'), { recursive: true });
+  const hash = setup.pack.runtimes.node.archives['darwin-arm64'].sha256;
+  symlinkSync(victim, join(setup.toolkit, '.cache', `${hash}.tar.gz.part`), 'file');
+  const r = setup.install(); assert.notEqual(r.status, 0);
+  assert.equal(readFileSync(victim, 'utf8'), 'USER FILE');
+});

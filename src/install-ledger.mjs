@@ -25,7 +25,7 @@ if (lines.shift() !== 'praxity-toolkit-install-ledger-v1') throw new Error('Unre
 const entries = new Map();
 for (const line of lines) {
   const [type, hash, key, extra] = line.split('\t');
-  if (extra !== undefined || !key || isAbsolute(key) || /^[A-Za-z]:/.test(key) || key.includes('\\') || key.split('/').some(part => !part || part === '..' || part === '.') || !['D', 'F', 'L', 'X'].includes(type) || !/^(?:-|[a-f0-9]{64})$/.test(hash)) throw new Error('Unsafe install ledger entry');
+  if (extra !== undefined || !key || isAbsolute(key) || /^[A-Za-z]:/.test(key) || key.includes('\\') || key.split('/').some(part => !part || part === '..' || part === '.') || !['D', 'F', 'L', 'X', 'U'].includes(type) || !(type === 'U' ? /^(?:-|[a-f0-9]{64}):[a-f0-9]{64}$/.test(hash) : /^(?:-|[a-f0-9]{64})$/.test(hash))) throw new Error('Unsafe install ledger entry');
   entries.set(key, { type, hash });
 }
 const keyFor = path => relative(home, path).split(sep).join('/');
@@ -51,8 +51,8 @@ if (operation === 'record') {
 } else if (operation === 'assert' || operation === 'remove') {
   for (const file of files) {
     const owned = entries.get(file.key);
-    if (!owned || owned.type === 'X') throw new Error(`Unowned path preserved: ${file.path}`);
-    if (owned.type !== file.type || owned.hash !== file.hash) throw new Error(`Installed file damaged or owned file changed: ${file.path}`);
+    if (!owned || owned.type === 'X') throw new Error(`unowned path preserved: ${file.path}`);
+    if (!(owned.type === 'U' && file.type === 'F' && owned.hash.split(':').includes(file.hash)) && (owned.type !== file.type || owned.hash !== file.hash)) throw new Error(`Installed file damaged or owned file changed: ${file.path}`);
   }
   if (operation === 'remove') for (const file of files.reverse()) {
     contained(file.path, file.type === 'L');

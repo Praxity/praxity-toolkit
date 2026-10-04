@@ -1,6 +1,6 @@
 #!/bin/sh
 set -eu
-HOME=$1; ROOT=$2; SCRIPT_DIR=$3; shift 3
+INSTALL_HOME=$1; ROOT=$2; SCRIPT_DIR=$3; shift 3
 die() { printf '%s\n' "$*" >&2; exit 1; }
 # Keep containment in the bootstrap's shared helper, also used by installed runs.
 . "$SCRIPT_DIR/scripts/install-paths.sh"
@@ -18,7 +18,7 @@ for FILE do
     continue
   fi
   ENTRY=$(ledger_entry "$FILE")
-  [ -n "$ENTRY" ] || die "Unowned path preserved: $FILE"
+  [ -n "$ENTRY" ] || die "unowned path preserved: $FILE"
   TYPE=$(printf '%s\n' "$ENTRY" | cut -f 1)
   HASH=$(printf '%s\n' "$ENTRY" | cut -f 2)
   if [ "$TYPE" = L ]; then
