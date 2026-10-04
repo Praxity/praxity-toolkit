@@ -53,7 +53,7 @@ export function doctor(context, run = probeProcess) {
           const fix = `praxity setup ${tool.id} ${component.id}`;
           const status = component.usable ? 'ok'
             : component.inventory === 'damaged' ? 'failed'
-            : declined[tool.id]?.includes(component.id) ? 'declined'
+            : component.inventory === 'absent' && declined[tool.id]?.includes(component.id) ? 'declined'
             : component.source === null && component.inventory === 'absent' ? 'not-installed' : 'failed';
           items.push(item(`tool.${tool.id}.${component.id}`, status, component.reason ?? (component.usable ? `Found ${component.version ?? 'component'}` : status === 'declined' ? 'Optional download was declined' : 'Component is unavailable'), status === 'ok' ? '' : fix));
         }

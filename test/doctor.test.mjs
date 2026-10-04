@@ -69,3 +69,12 @@ test('pin mismatch and process failure are bounded diagnostic failures', t => {
     : invocation.args[0] === 'compile' ? { code: null, stdout: '', stderr: '', error: 'Timed out' } : run(invocation));
   assert.equal(result.items[0].status, 'failed'); assert.equal(result.items[1].message, 'Timed out');
 });
+
+for (const inventory of ['intact', 'damaged', 'unmanaged']) test(`past refusal cannot mask a present ${inventory} component failure`, t => {
+  const context = prepared(t);
+  writeFileSync(join(context.root, 'declined.json'), '{"check":["browser"]}');
+  const check = { components: [{ id: 'browser', usable: false, source: 'setup', inventory, reason: 'Browser failed to launch' }], exitCode: 1 };
+  const report = doctor(context, runner(context, check));
+  assert.equal(report.items.find(item => item.id === 'tool.check.browser').status, 'failed');
+  assert.equal(report.exitCode, 1);
+});
