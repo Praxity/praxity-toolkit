@@ -26,6 +26,14 @@ is unavailable, stop and obtain it from the owner. Do not invent a download URL.
    adapters may coexist. Preserve files the installer does not own. Plain Claude
    skills need no plugin flag. Restart the host and verify invocation as well as
    picker visibility.
+6. For a course opened in T3, run `~/.praxity/bin/praxity init <course-folder>`.
+   The folder must contain `course.yaml` or `.prax` lessons. It merges five
+   course actions into `t3.json`, preserving other keys and scripts. Commit that
+   file with the course. Studio's port is stable; its private registry stays in
+   `~/.praxity/toolkit-state/t3-actions.json`. Export HTML to `course-html.zip`
+   before running Check accessibility. Automatic editor preview needs T3 desktop
+   and a Studio build supporting `--port` and `/launch`. Refused JSON stays
+   unchanged; resolve the reported error and rerun init.
 
 Use the absolute launcher when PATH is stale. Show the printed PATH line for the
 user to add; never edit shell profiles or AGENTS files. Praxity tools run locally;

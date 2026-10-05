@@ -1,10 +1,10 @@
 {
   "claude": {
-    ".claude/skills/install-praxity/SKILL.md": "131d1e8287893f1f2dbe04bca91af672c3c54f8865af2d52aca1537ae08d3030",
+    ".claude/skills/install-praxity/SKILL.md": "644f31149815c9904545e37f7c048ca23c2f1291c6a82be7addc9bacd371f12b",
     ".claude/skills/studio-editor/SKILL.md": "6da7ddd29e3e537b6b10111b249e550c9485f99f9a9f3b08027c2437ba4bbfe5"
   },
   "codex": {
-    ".agents/skills/install-praxity/SKILL.md": "131d1e8287893f1f2dbe04bca91af672c3c54f8865af2d52aca1537ae08d3030",
+    ".agents/skills/install-praxity/SKILL.md": "644f31149815c9904545e37f7c048ca23c2f1291c6a82be7addc9bacd371f12b",
     ".agents/skills/studio-editor/SKILL.md": "6da7ddd29e3e537b6b10111b249e550c9485f99f9a9f3b08027c2437ba4bbfe5"
   }
 }

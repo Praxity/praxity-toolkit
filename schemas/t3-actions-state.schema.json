@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["owner", "schemaVersion", "courses"],
+  "properties": {
+    "owner": { "const": "praxity-toolkit" },
+    "schemaVersion": { "const": 1 },
+    "courses": {
+      "type": "array",
+      "maxItems": 300,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["folder", "port"],
+        "properties": {
+          "folder": { "type": "string", "minLength": 1 },
+          "port": { "type": "integer", "minimum": 41700, "maximum": 41999 }
+        }
+      }
+    }
+  }
+}

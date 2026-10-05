@@ -7,6 +7,7 @@ import { readManifest } from './manifest.mjs';
 import { doctor } from './doctor.mjs';
 import { executeTool, probeProcess, quotePosix } from './tools.mjs';
 import { buildAdapters, installSkills, uninstallSkills } from './skills.mjs';
+import { initCourse } from './init.mjs';
 
 export function loadContext(root = fileURLToPath(new URL('..', import.meta.url))) {
   const pack = readManifest(join(root, 'pack.json'));
@@ -19,6 +20,12 @@ export async function runCli(args, context, dependencies = {}) {
   const execute = dependencies.execute ?? executeTool;
   const print = dependencies.print ?? console.log;
   const [command, ...rest] = args;
+  if (command === 'init') {
+    if (rest.length > 1 || rest[0]?.startsWith('-')) throw new Error('Usage: praxity init [folder]');
+    const result = initCourse({ folder: resolve(context.cwd, rest[0] ?? '.'), home: context.home });
+    print(`Updated ${result.file}. Studio uses port ${result.port}.`);
+    return 0;
+  }
   if (command === 'version') {
     if (rest.length) throw new Error('Usage: praxity version');
     print(JSON.stringify({ pack: context.pack.version, runtimes: Object.fromEntries(Object.entries(context.pack.runtimes).map(([id, runtime]) => [id, runtime.version])), tools: context.pack.tools.map(tool => ({ id: tool.id, version: tool.version, installed: context.state.installed.includes(tool.id) })) }, null, 2));

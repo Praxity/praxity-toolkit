@@ -1,0 +1,6 @@
+{
+  "url": "https://t3.codes/schema/t3.json",
+  "source": "https://github.com/pingdotgg/t3code/blob/main/packages/contracts/src/t3ProjectFile.ts",
+  "icons": "https://github.com/pingdotgg/t3code/blob/main/packages/contracts/src/project.ts",
+  "retrieved": "2026-10-05"
+}

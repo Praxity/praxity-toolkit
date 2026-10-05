@@ -73,7 +73,22 @@ integrity against that trusted manifest.
 For example, `praxity setup check browser` forwards `setup browser` to Check.
 It never adds `--yes`. Every other subcommand and its arguments reach Studio
 unchanged. The toolkit reserves `setup`, `doctor`, `version`, `rollback`,
-`skills`, `check`, `trace`, `print` and `import`.
+`skills`, `init`, `check`, `trace`, `print` and `import`.
+
+## Course actions in T3 Code
+
+Run `praxity init [folder]` in a course with `course.yaml` or `.prax` lessons.
+It writes a commit-ready `t3.json` with Open in Studio, Export HTML, Export PDF,
+Check accessibility and Doctor actions. Exports write `course-html.zip` and
+`course.pdf`; export HTML before running the accessibility check.
+Other keys and scripts stay intact. Invalid JSON is refused unchanged.
+
+Studio keeps a course port in 41700-41999, reserved in
+`~/.praxity/toolkit-state/t3-actions.json`. Rerunning init keeps that port.
+Generated actions use relative paths and a loopback `/launch` URL, with no tokens
+or machine paths. Automatic editor preview needs T3 desktop and Studio's
+`--port` and `/launch` support. An occupied port makes Studio fail clearly;
+close the process using it before retrying.
 
 ## Recovery
 

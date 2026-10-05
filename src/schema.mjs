@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 // loudly so a schema edit cannot silently weaken validation.
 const keywords = new Set(['$schema', '$id', '$defs', '$ref', 'title', 'description',
   'type', 'properties', 'required', 'additionalProperties', 'items', 'minItems',
-  'minLength', 'pattern', 'enum', 'const', 'oneOf', 'allOf', 'minimum']);
+  'minLength', 'maxLength', 'maxItems', 'pattern', 'enum', 'const', 'oneOf', 'allOf', 'minimum', 'maximum']);
 
 export function validateSchema(value, schema) {
   function check(data, rule, path) {
@@ -27,11 +27,14 @@ export function validateSchema(value, schema) {
     if (rule.enum && !rule.enum.includes(data)) errors.push(`${path}: unsupported value`);
     if (type === 'string') {
       if (rule.minLength && data.length < rule.minLength) errors.push(`${path}: too short`);
+      if (rule.maxLength !== undefined && [...data].length > rule.maxLength) errors.push(`${path}: too long`);
       if (rule.pattern && !new RegExp(rule.pattern).test(data)) errors.push(`${path}: invalid format`);
     }
     if (typeof data === 'number' && rule.minimum !== undefined && data < rule.minimum) errors.push(`${path}: below minimum`);
+    if (typeof data === 'number' && rule.maximum !== undefined && data > rule.maximum) errors.push(`${path}: above maximum`);
     if (type === 'array') {
       if (rule.minItems && data.length < rule.minItems) errors.push(`${path}: too few items`);
+      if (rule.maxItems !== undefined && data.length > rule.maxItems) errors.push(`${path}: too many items`);
       if (rule.items) data.forEach((item, i) => errors.push(...check(item, rule.items, `${path}/${i}`)));
     }
     if (type === 'object') {
