@@ -7,7 +7,8 @@ export const repository = fileURLToPath(new URL('..', import.meta.url));
 export const realPack = () => JSON.parse(readFileSync(join(repository, 'pack.json'), 'utf8'));
 export function examplePack() {
   const pack = realPack();
-  // Tests choose which tools to publish, independently of release availability.
+  // Tests pin their own version and choose which tools to publish, independently of the release.
+  pack.version = '0.1.0';
   for (const tool of pack.tools) {
     for (const platform of Object.keys(tool.archives)) {
       tool.archives[platform] = { status: 'unpublished', reason: 'Not published in this test fixture.' };
