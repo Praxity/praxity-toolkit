@@ -4,9 +4,9 @@ Install Praxity's local tools for learning designers in your home folder.
 The pack provides pinned Node and Typst runtimes, a `praxity` command and skills
 for your agent host. There is no SDK or MCP server.
 
-This repository is a scaffold. Every tool archive in `pack.json` is unpublished.
-The current manifest installs Node and Typst and reports the missing tools.
-It does not yet deliver a working Studio editor or a complete tool pack.
+The release candidate pins Studio CLI, Check, Trace, Print and Import archives
+in `pack.json`, alongside Node and Typst. Studio uses grammar 4; convert grammar 3
+courses before opening or exporting them with this pack.
 The pack installer supports Apple Silicon macOS with local T3 desktop. Skill
 adapters also support Codex CLI and Claude Code. Other OS/CPU entries are
 release metadata only; their pack installers are not implemented.
@@ -89,6 +89,32 @@ Generated actions use relative paths and a loopback `/launch` URL, with no token
 or machine paths. Automatic editor preview needs T3 desktop and Studio's
 `--port` and `/launch` support. An occupied port makes Studio fail clearly;
 close the process using it before retrying.
+
+## Convert a grammar 3 course
+
+Keep a backup and convert a copy. The converter is archived at Studio tag
+`converter-v3-to-v4`, commit `8905c116e`. It requires access to the private Studio
+repository, Node 24.18.x and pnpm 10.28.2. From a Studio checkout:
+
+```sh
+git fetch origin tag converter-v3-to-v4
+git worktree add --detach ../praxity-converter converter-v3-to-v4
+pnpm --dir ../praxity-converter install --frozen-lockfile
+pnpm --dir ../praxity-converter --filter @praxity/desktop prebuild
+pnpm --dir ../praxity-converter --filter @praxity/convert convert <course-copy> --from 3 --out <new-output-directory>
+```
+
+Review the output, `conversion-report.json`, its SHA-256, the allocation manifest
+and `narration-review.md`. Record the approved report hash independently, then run:
+
+```sh
+pnpm --dir ../praxity-converter --filter @praxity/convert convert --install <approved-directory> --report-sha256 <approved-hash>
+```
+
+Installation writes to the course copy recorded in the report, verifies source
+and output hashes, and installs the approved identities and narration through
+the course journal. Keep unchanged assets with that installed copy. Open and
+export it with Studio before replacing your working course.
 
 ## Recovery
 
