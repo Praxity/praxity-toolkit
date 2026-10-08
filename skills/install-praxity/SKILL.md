@@ -17,8 +17,8 @@ is unavailable, stop and obtain it from the owner. Do not invent a download URL.
 3. Run `~/.praxity/bin/praxity setup` for installed tools. Each tool owns optional
    component consent. Let its prompts reach the user. Never pass `--yes` silently.
    Respect a refusal and report the unavailable capability.
-4. Run `~/.praxity/bin/praxity doctor --json`. Explain failed and not-installed
-   items separately from declined components. Report fixes from doctor.
+4. Run `~/.praxity/bin/praxity doctor --json`. Explain failed, not-installed and
+   partial items separately from declined components. Report fixes from doctor.
 5. Ask which host and scope the user uses if unknown. Run
    `~/.praxity/bin/praxity skills install --host t3 --scope user`, replacing only
    the host and scope with the user's choice. `t3` and `claude` share plain Claude
@@ -32,7 +32,8 @@ is unavailable, stop and obtain it from the owner. Do not invent a download URL.
    file with the course. Studio's port is stable; its private registry stays in
    `~/.praxity/toolkit-state/t3-actions.json`. Export HTML to `course-html.zip`
    before running Check accessibility. Automatic editor preview needs T3 desktop
-   and a Studio build supporting `--port` and `/launch`. Refused JSON stays
+   and a Studio build supporting `--port` and `/launch`. The actions call
+   `"$HOME/.praxity/bin/praxity"`, so they work before PATH is set. Refused JSON stays
    unchanged; resolve the reported error and rerun init.
 
 Use the absolute launcher when PATH is stale. Show the printed PATH line for the

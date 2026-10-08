@@ -1,5 +1,5 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { toolInvocation, toolEnvironment, probeProcess, quotePosix, readDeclined } from './tools.mjs';
 import { adapters, buildAdapters, skillPresence } from './skills.mjs';
@@ -58,6 +58,12 @@ export function doctor(context, run = probeProcess) {
             : component.inventory === 'damaged' ? 'failed'
             : missing && declined[tool.id]?.includes(component.id) ? 'declined'
             : missing ? 'not-installed' : 'failed';
+          // Without its browser Check audits no HTML at all, and praxity check
+          // exits 2. Its setup selector html installs the browser.
+          if (component.id === 'browser' && status === 'not-installed') {
+            items.push(item(`tool.${tool.id}.${component.id}`, status, 'Browser not installed, so praxity check cannot audit HTML and exits 2. Setup downloads it after asking.', `praxity setup ${tool.id} html`));
+            continue;
+          }
           items.push(item(`tool.${tool.id}.${component.id}`, status, component.reason ?? (component.usable ? `Found ${component.version ?? 'component'}` : status === 'declined' ? 'Optional download was declined' : 'Component is unavailable'), status === 'ok' ? '' : fix));
         }
       } else {
@@ -101,11 +107,19 @@ export function doctor(context, run = probeProcess) {
       return context.state.installed.includes(tool.id) && existsSync(path) ? [path] : [];
     });
     const generated = buildAdapters({ source: join(context.root, 'skills'), tools: toolSkills, packVersion: context.pack.version });
-    const names = [...generated.claude.keys()].filter(name => name.endsWith('/SKILL.md')).map(name => name.split('/').at(-2));
     for (const [scope, base] of [['user', context.home], ['project', context.cwd]]) for (const host of Object.keys(adapters)) {
-      const present = skillPresence({ base, host, names });
-      items.push(item(`host.${host}.${scope}`, present ? 'ok' : 'not-installed', present ? `Skill files present in ${adapters[host].skills}; verify invocation in the host` : 'Generated adapter is absent', present ? '' : `praxity skills install --host ${host} --scope ${scope}`));
+      const { current, stale, missing } = skillPresence({ base, host, outputs: generated });
+      const fix = `praxity skills install --host ${host} --scope ${scope}`;
+      if (!stale.length && !missing.length) items.push(item(`host.${host}.${scope}`, 'ok', `Skill files current in ${adapters[host].skills}; verify invocation in the host`));
+      else if (!current.length && !stale.length) items.push(item(`host.${host}.${scope}`, 'not-installed', 'Generated adapter is absent', fix));
+      else items.push(item(`host.${host}.${scope}`, 'partial', [missing.length && `Missing skills: ${missing.join(', ')}.`, stale.length && `Changed or out-of-date skills: ${stale.join(', ')}.`].filter(Boolean).join(' '), fix));
     }
+    // T3 actions call the launcher by its full path, so a missing PATH entry
+    // only affects typed commands. The doctor names the line; it never edits it.
+    const onPath = (context.env.PATH ?? '').split(delimiter).some(directory => directory && existsSync(join(directory, 'praxity')));
+    items.push(onPath ? item('launcher.path', 'ok', 'praxity is on PATH')
+      : item('launcher.path', 'not-installed', 'praxity is not on PATH. T3 course actions still work; in a terminal, type ~/.praxity/bin/praxity or add the PATH line.',
+        'Add this line to ~/.zshrc, then open a new terminal and restart T3: export PATH="$HOME/.praxity/bin:$PATH"'));
     const result = { schemaVersion: 1, packVersion: context.pack.version, items, exitCode: items.some(item => item.status === 'failed') ? 1 : 0 };
     const errors = validateSchema(result, loadSchema('doctor'));
     if (errors.length) throw new Error(errors.join('\n'));

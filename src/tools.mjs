@@ -69,10 +69,19 @@ export async function executeTool(context, tool, args) {
     process.stdout.write(bytes);
     output = (output + bytes.toString()).slice(-1024 * 1024);
   });
-  const code = await new Promise((resolve, reject) => {
-    child.on('error', reject);
-    child.on('close', (code, signal) => signal ? reject(new Error(`${tool.id} stopped by ${signal}`)) : resolve(code));
-  });
+  // Stopping the launcher stops the tool. Ctrl+C in a terminal reaches both
+  // processes; a signal sent to the launcher alone, as when T3 stops an
+  // action, is forwarded. The launcher exits only after the tool has.
+  const forward = signal => { if (child.exitCode === null && child.signalCode === null) child.kill(signal); };
+  const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+  for (const signal of signals) process.on(signal, forward);
+  let code;
+  try {
+    code = await new Promise((resolve, reject) => {
+      child.on('error', reject);
+      child.on('close', (code, signal) => signal ? reject(new Error(`${tool.id} stopped by ${signal}`)) : resolve(code));
+    });
+  } finally { for (const signal of signals) process.off(signal, forward); }
   if (setup && tool.id === 'check') {
     // Check currently exposes refusal in setup's text result, not doctor JSON.
     // Record only its explicit refusal line; never classify a missing component

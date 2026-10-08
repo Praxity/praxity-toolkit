@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { doctor } from '../src/doctor.mjs';
 import { loadSchema, validateSchema } from '../src/schema.mjs';
 import { fixture, fakeTool } from './helpers.mjs';
@@ -108,4 +108,25 @@ for (const inventory of ['intact', 'damaged', 'unmanaged']) test(`past refusal c
   const report = doctor(context, runner(context, check));
   assert.equal(report.items.find(item => item.id === 'tool.check.browser').status, 'failed');
   assert.equal(report.exitCode, 1);
+});
+
+test('doctor names the PATH line when praxity is not on PATH, without failing', t => {
+  const context = prepared(t);
+  const bin = join(context.root, 'bin'); mkdirSync(bin);
+  const path = () => doctor({ ...context, env: { ...context.env, PATH: [context.root, bin].join(delimiter) } }, runner(context));
+  const missing = path();
+  const item = missing.items.find(item => item.id === 'launcher.path');
+  assert.equal(item.status, 'not-installed');
+  assert.match(item.fix, /export PATH="\$HOME\/\.praxity\/bin:\$PATH"/);
+  assert.equal(missing.items.find(item => item.status === 'failed' && item.id === 'launcher.path'), undefined);
+  writeFileSync(join(bin, 'praxity'), '#!/bin/sh\n');
+  assert.equal(path().items.find(item => item.id === 'launcher.path').status, 'ok');
+});
+
+test('a missing Check browser says HTML checks cannot run and names the setup command', t => {
+  const context = prepared(t);
+  const item = doctor(context, runner(context)).items.find(item => item.id === 'tool.check.browser');
+  assert.equal(item.status, 'not-installed');
+  assert.match(item.message, /cannot audit HTML and exits 2/);
+  assert.equal(item.fix, 'praxity setup check html');
 });

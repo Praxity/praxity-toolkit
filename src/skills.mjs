@@ -91,9 +91,16 @@ export function uninstallSkills(options) {
   return changeSkills({ ...options, remove: true });
 }
 
+// Regenerates the adapters already recorded in this scope, so a pack upgrade
+// adds and updates its skills. A scope without a record is left untouched.
+export function refreshSkills({ base, outputs }) {
+  if (!existsSync(contained(realpathSync(base), '.praxity/toolkit-skills.json'))) return { hosts: [], files: [] };
+  return changeSkills({ base, outputs, remove: false });
+}
+
 function changeSkills({ base, otherBase, host, outputs, remove }) {
-  host = canonicalHost(host);
-  if (!Object.hasOwn(adapters, host)) throw new Error('Host must be t3, claude or codex');
+  host = host === undefined ? undefined : canonicalHost(host);
+  if (host !== undefined && !Object.hasOwn(adapters, host)) throw new Error('Host must be t3, claude or codex');
   base = realpathSync(base);
   const ledger = contained(base, '.praxity/toolkit-skills.json');
   contained(base, '.praxity/toolkit-skills.json.tmp');
@@ -264,7 +271,7 @@ function changeSkills({ base, otherBase, host, outputs, remove }) {
       acquire();
     }
     const hosts = new Set(hostsOf(state));
-    if (remove) hosts.delete(host); else hosts.add(host);
+    if (remove) hosts.delete(host); else if (host) hosts.add(host);
     for (const [name, hash] of Object.entries(state.files)) checkHash(name, [hash]);
     // Removing one adapter keeps the exact installed bytes of the others.
     // Legacy plugin ownership still needs the migration to current layouts.
@@ -318,9 +325,18 @@ function changeSkills({ base, otherBase, host, outputs, remove }) {
   }
 }
 
-export function skillPresence({ base, host, names }) {
-  const adapter = adapters[canonicalHost(host)];
-  const expected = names.map(name => join(base, adapter.skills, name, 'SKILL.md'));
-  if (adapter.plugin) expected.push(join(base, adapter.plugin));
-  return expected.every(path => existsSync(path));
+// Sorts each generated skill by its files in base: current, stale or missing.
+// Skills the pack does not generate are ignored.
+export function skillPresence({ base, host, outputs }) {
+  const adapter = adapters[canonicalHost(host)], result = { current: [], stale: [], missing: [] };
+  const skills = new Map();
+  for (const [name, bytes] of outputs[canonicalHost(host)]) {
+    const skill = name.slice(adapter.skills.length + 1).split('/')[0];
+    const path = join(base, name);
+    skills.set(skill, (skills.get(skill) ?? true) && existsSync(path) && readFileSync(path).equals(bytes));
+  }
+  for (const [skill, current] of skills) {
+    result[current ? 'current' : existsSync(join(base, adapter.skills, skill, 'SKILL.md')) ? 'stale' : 'missing'].push(skill);
+  }
+  return result;
 }

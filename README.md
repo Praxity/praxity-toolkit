@@ -1,15 +1,21 @@
 # Praxity toolkit
 
 Install Praxity's local tools for learning designers in your home folder.
-The pack provides pinned Node and Typst runtimes, a `praxity` command and skills
-for your agent host. There is no SDK or MCP server.
+On an Apple Silicon Mac, one install gives you five working tools:
 
-The release candidate pins Studio CLI, Check, Trace, Print and Import archives
-in `pack.json`, alongside Node and Typst. Studio uses grammar 4; convert grammar 3
-courses before opening or exporting them with this pack.
-The pack installer supports Apple Silicon macOS with local T3 desktop. Skill
-adapters also support Codex CLI and Claude Code. Other OS/CPU entries are
-release metadata only; their pack installers are not implemented.
+- Studio edits a course in the browser or in T3's preview, and exports it as HTML or PDF.
+- Check audits an exported course, including for accessibility.
+- Trace writes a report on an exported HTML course.
+- Print renders Markdown to PDF.
+- Import converts a SCORM package into a Praxity course.
+
+The pack also installs private Node and Typst runtimes, a `praxity` command,
+T3 course actions and skills for T3, Claude Code and Codex CLI. There is no SDK
+or MCP server. `pack.json` pins every archive by URL and SHA-256.
+
+Studio reads grammar 4 courses; convert grammar 3 courses first.
+Only Apple Silicon macOS has archives and an installer. The other platforms in
+`pack.json` are placeholders.
 
 Praxity's tools execute locally. The chosen host and model provider control
 telemetry and what they transmit. An editor capability URL can enter the host's
@@ -48,6 +54,9 @@ export PATH="$HOME/.praxity/bin:$PATH"
 ```
 
 Use `~/.praxity/bin/praxity` directly until your shell and host have the new PATH.
+T3 course actions call it by that path, so they work before you edit PATH.
+The doctor's `launcher.path` item says whether `praxity` is on PATH and names
+the line to add. Neither the installer nor the doctor edits shell files.
 The launcher selects the active pack and uses its private Node. It sets Print's
 `PRAXITY_PRINT_TYPST` and Import's `PRAXITY_CLI` to absolute pack paths. Studio's
 present standalone publisher still needs a supported shared-Typst option.
@@ -84,9 +93,14 @@ Check accessibility and Doctor actions. Exports write `course-html.zip` and
 Other keys and scripts stay intact. Invalid JSON is refused unchanged.
 
 Studio keeps a course port in 41700-41999, reserved in
-`~/.praxity/toolkit-state/t3-actions.json`. Rerunning init keeps that port.
+`~/.praxity/toolkit-state/t3-actions.json`. Rerunning init keeps that port and
+upgrades actions written by earlier versions.
 Generated actions use relative paths and a loopback `/launch` URL, with no tokens
-or machine paths. Automatic editor preview needs T3 desktop and Studio's
+or machine paths. They call the launcher as `"$HOME/.praxity/bin/praxity"`,
+which the shell expands on each machine, because T3 runs actions in a login
+shell that may not have `~/.praxity/bin` on PATH. Open in Studio passes
+`--no-open`, so the editor opens in T3's preview and not in your default
+browser. Automatic editor preview needs T3 desktop and Studio's
 `--port` and `/launch` support. An occupied port makes Studio fail clearly;
 close the process using it before retrying.
 
@@ -138,6 +152,12 @@ Checksum failures publish no version or launcher. Installed file damage is
 refused. Roll back to an intact previous pack, or use the backup procedure above
 before reinstalling. A different manifest needs a new pack version.
 
+Release candidates 1 and 2 labelled themselves 0.1.0 and installed to
+`~/.praxity/toolkit/0.1.0`. When you install 0.1.0, the installer recognises
+either candidate by its manifest's SHA-256, checks its files, and moves it to
+`~/.praxity/toolkit/0.1.0-rc.1`. The version pointers follow it, so rollback
+still reaches it. Any other manifest in that folder is refused as before.
+
 Updates retain the previous version. Both version pointers change in one atomic
 rename. Rollback checks the destination pack and keeps the outgoing pack, even
 when its contents are damaged. Save and close Studio before switching or removing a pack. This scaffold
@@ -181,6 +201,11 @@ to plain skills, and its unchanged files are removed. Modified or unowned files
 are preserved and stop migration or removal. Stop active host sessions before
 migrating the plugin, then start a new session without its old `--plugin-dir`.
 The generator emits only the two current layouts into a fresh output directory.
+
+Installing a new pack runs `praxity skills refresh --scope user`. It regenerates
+only the adapters recorded in `~/.praxity/toolkit-skills.json`, so new tool
+skills appear and unowned skills stay as they are. Refresh project-scope
+adapters yourself with `praxity skills refresh --scope project` in the project.
 
 Remove one adapter with `praxity skills uninstall --host claude --scope user`
 or `--host codex`. The other adapter remains installed. `--host t3` removes the
@@ -238,15 +263,19 @@ and invocation in the host to confirm runtime discovery.
 ## Doctor
 
 `schemas/doctor.schema.json` defines JSON version 1. Each item has an `id`,
-`status`, `message` and `fix`. Status is `ok`, `failed`, `declined` or
-`not-installed`. Exit code 1 means at least one failure. Missing unpublished
-tools or unused adapters do not make a runtime-only install fail.
+`status`, `message` and `fix`. Status is `ok`, `failed`, `declined`,
+`not-installed` or `partial`. Exit code 1 means at least one failure. Missing
+tools, unused adapters, partial adapters and a missing PATH entry do not fail it.
 
 Doctor checks the Node pin and compiles a tiny Typst document. It reads Check's
 own JSON doctor and inspects the bundled tiny Studio course. It runs Trace and
-Print on temporary inputs when installed. Import gets only a CLI help probe.
-It checks the shared Claude and Codex skill folders at both scopes, with
-`host.claude` and `host.codex` items. Probes time out after 30 seconds and cap captured output at 1 MiB.
+Print on temporary inputs when installed, and has Import convert its shipped
+SCORM fixture. It checks the shared Claude and Codex skill folders at both
+scopes, with `host.claude` and `host.codex` items. An adapter missing some of
+this pack's skills, or holding changed copies, is `partial`; its message names
+those skills and its fix is the `praxity skills install` command that refreshes
+them. `launcher.path` reports whether `praxity` is on PATH.
+Probes time out after 30 seconds and cap captured output at 1 MiB.
 Temporary probe documents are removed. It does not launch an editor or run a
 full Check audit.
 
@@ -264,18 +293,9 @@ paths are relative to the extracted root. The manifest selects Node-script or
 executable launchers. Tar archives must not escape their artifact root.
 Keep licences, Required Notices, dependencies and inventories in the payload.
 
-| Tool | Needed before changing `unpublished` to `published` |
-| --- | --- |
-| Studio 0.3.0 | Publish CLI/editor archive from the current draft release, package the format skill and legal files, and expose shared Typst resolution |
-| Check 0.6.0 | Publish the portable compiled build with setup/doctor, skill and notices; agree whether its redundant bundled Node is removed |
-| Trace 0.1.1 | Archive and publish `pnpm package` output including dependencies, lexical data, skill and notices |
-| Print 0.1.0 | Archive and publish `pnpm package` output including fonts, patched dependencies, skill and notices; retain external Typst |
-| Import 0.1.0 | Add portable packaging, dependencies, skill and notices, then publish; verify Studio compatibility |
-
-The version entries are candidate pins, not evidence that all artifacts are
-available. Check's setup/doctor contract was read from current upstream source;
-the local Check checkout was older. Confirm its published inventory and version
-before replacing the candidate pin.
+All five tool archives are published for darwin-arm64 as assets of this
+repository's releases, each with its SHA-256 in `pack.json`. Their other
+platform entries stay `unpublished`, with the reason recorded beside each.
 
 Node 24.21.0 hashes came from its [signed official checksum list](https://nodejs.org/dist/v24.21.0/SHASUMS256.txt.asc),
 verified with release key `5BE8A3F6C8A5C01D106C0AD820B1A390B168D356` listed in

@@ -8,7 +8,7 @@ import { spawnSync, spawn } from 'node:child_process';
 import { buildAdapters, installSkills, uninstallSkills } from '../src/skills.mjs';
 import { runCli } from '../src/cli.mjs';
 import { doctor } from '../src/doctor.mjs';
-import { fixture, repository } from './helpers.mjs';
+import { fixture, fakeTool, repository } from './helpers.mjs';
 
 const outputsFor = context => buildAdapters({ source: join(context.root, 'skills'), packVersion: context.pack.version });
 const readState = base => JSON.parse(readFileSync(join(base, '.praxity/toolkit-skills.json'), 'utf8'));
@@ -418,4 +418,33 @@ for (const phase of ['stage', 'remove']) test(`interrupted adapter addition reco
   assert.ok(existsSync(join(context.home, '.agents/skills/install-praxity/SKILL.md')));
   assert.equal(existsSync(join(context.home, '.claude/skills/install-praxity/SKILL.md')), true);
   assert.equal(existsSync(join(context.home, '.praxity/toolkit-skills.lock')), false);
+});
+
+test('doctor names skills missing after an upgrade, and refresh adds them without touching user skills', async t => {
+  const { context } = fixture(t), quiet = { print: () => {} };
+  await runCli(['skills', 'install', '--host', 'claude', '--scope', 'user'], context, quiet);
+  const userSkill = join(context.home, '.claude/skills/my-notes/SKILL.md');
+  mkdirSync(join(userSkill, '..')); writeFileSync(userSkill, 'USER SKILL');
+  // The upgraded pack adds Import and its skill.
+  fakeTool(context, 'import');
+  mkdirSync(join(context.root, 'tools/import/skill'));
+  writeFileSync(join(context.root, 'tools/import/skill/SKILL.md'), '---\nname: praxity-import\ndescription: Convert a course.\n---\nImport skill.\n');
+  const host = () => doctor(context, () => ({ code: 0, stdout: 'v24.21.0', stderr: '' })).items.find(item => item.id === 'host.claude.user');
+  assert.deepEqual(host(), { id: 'host.claude.user', status: 'partial', message: 'Missing skills: praxity-import.', fix: 'praxity skills install --host claude --scope user' });
+  await runCli(['skills', 'refresh', '--scope', 'user'], context, quiet);
+  assert.equal(host().status, 'ok');
+  assert.equal(readFileSync(userSkill, 'utf8'), 'USER SKILL');
+  assert.deepEqual(readState(context.home).hosts, ['claude']);
+  assert.equal(existsSync(join(context.home, '.agents')), false);
+  await runCli(['skills', 'refresh', '--scope', 'project'], context, quiet);
+  assert.equal(existsSync(join(context.cwd, '.praxity')), false);
+});
+
+test('doctor reports a changed toolkit skill as partial', async t => {
+  const { context } = fixture(t);
+  await runCli(['skills', 'install', '--host', 'codex', '--scope', 'project'], context, { print: () => {} });
+  writeFileSync(join(context.cwd, '.agents/skills/studio-editor/SKILL.md'), 'Edited');
+  const item = doctor(context, () => ({ code: 0, stdout: 'v24.21.0', stderr: '' })).items.find(item => item.id === 'host.codex.project');
+  assert.equal(item.status, 'partial');
+  assert.equal(item.message, 'Changed or out-of-date skills: studio-editor.');
 });

@@ -73,3 +73,16 @@ export function installation(t, options = {}) {
   const action = command => shell(`sh ${quote(posix(join(repository, 'install.sh')))} ${command}`, { env });
   return { root, home, pack, manifest, save, env, install, action, toolkit: join(home, '.praxity/toolkit') };
 }
+
+// Kills the installer once, after the first successful wrapped command whose
+// arguments meet the shell condition.
+export function crashAfter(setup, command, condition) {
+  const bin = join(setup.root, 'crash-bin'), marker = join(setup.root, 'crashed');
+  mkdirSync(bin);
+  const real = shell(`command -v ${command}`).stdout.trim();
+  writeFileSync(join(bin, command), `#!/bin/sh\n${quote(real)} "$@"\ncode=$?\nif [ "$code" = 0 ] && [ ! -e ${quote(posix(marker))} ]; then\n${condition}\nfi\nexit "$code"\n`, { mode: 0o755 });
+  const init = join(setup.root, 'crash-env');
+  writeFileSync(init, (setup.env.BASH_ENV ? readFileSync(setup.env.BASH_ENV.replace(/^\/([a-z])\//, '$1:/'), 'utf8') : '') + `\nexport PATH=${quote(posix(bin))}:"$PATH"\n`);
+  setup.env.BASH_ENV = posix(init);
+  return marker;
+}

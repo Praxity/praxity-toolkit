@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, lstatSync, statSync, readdirSync, realpathSync, readlinkSync } from 'node:fs';
 import { join, relative, isAbsolute, sep, dirname, resolve } from 'node:path';
-import { readManifest, installationPlan } from './manifest.mjs';
+import { readManifest, installationPlan, mislabeledPacks } from './manifest.mjs';
 import { buildAdapters } from './skills.mjs';
 import { quotePosix } from './tools.mjs';
 import { installJournal } from './install-ledger.mjs';
@@ -29,6 +29,19 @@ function inspectTree(root, directory = root, pending = false) {
       if (target === '..' || target.startsWith(`..${sep}`) || isAbsolute(target)) throw new Error(`Archive symlink escapes artifact: ${path}`);
     } else if (stat.isDirectory()) inspectTree(root, path, pending);
     else if (!stat.isFile()) throw new Error(`Archive contains special file: ${path}`);
+  }
+}
+
+function verifyInstalled(stage, manifestSha256) {
+  const state = JSON.parse(readFileSync(join(stage, 'state.json'), 'utf8'));
+  if (state.owner !== 'praxity-toolkit' || state.manifestSha256 !== manifestSha256) throw new Error('Pack version already exists with a different manifest');
+  inspectStage(stage);
+  for (const [file, expected] of Object.entries(state.files)) {
+    if (isAbsolute(file) || file.split(/[\\/]/).includes('..')) throw new Error('Unsafe installed inventory path');
+    if (!existsSync(join(stage, file)) || !lstatSync(join(stage, file)).isFile() || hash(join(stage, file)) !== expected) throw new Error(`Installed file damaged: ${file}. Roll back or move this pack aside before reinstalling.`);
+  }
+  for (const [file, expected] of Object.entries(state.links ?? {})) {
+    if (isAbsolute(file) || file.split(/[\\/]/).includes('..') || !lstatSync(join(stage, file)).isSymbolicLink() || readlinkSync(join(stage, file)) !== expected) throw new Error(`Installed link damaged: ${file}`);
   }
 }
 
@@ -91,14 +104,14 @@ if (command === 'plan') {
     launcherSha256: hash(join(stage, 'launcher.sh')), files, links }, null, 2) + '\n');
   journal.write(join(stage, '.praxity-install'), 'praxity-toolkit\n');
 } else if (command === 'verify') {
+  verifyInstalled(stage, hash(manifestFile));
+} else if (command === 'relabel') {
+  // Prints the folder name for an intact mislabeled release candidate that
+  // holds this version's folder. Any other manifest is left to verify's refusal.
   const state = JSON.parse(readFileSync(join(stage, 'state.json'), 'utf8'));
-  if (state.owner !== 'praxity-toolkit' || state.manifestSha256 !== hash(manifestFile)) throw new Error('Pack version already exists with a different manifest');
-  inspectStage(stage);
-  for (const [file, expected] of Object.entries(state.files)) {
-    if (isAbsolute(file) || file.split(/[\\/]/).includes('..')) throw new Error('Unsafe installed inventory path');
-    if (!existsSync(join(stage, file)) || !lstatSync(join(stage, file)).isFile() || hash(join(stage, file)) !== expected) throw new Error(`Installed file damaged: ${file}. Roll back or move this pack aside before reinstalling.`);
-  }
-  for (const [file, expected] of Object.entries(state.links ?? {})) {
-    if (isAbsolute(file) || file.split(/[\\/]/).includes('..') || !lstatSync(join(stage, file)).isSymbolicLink() || readlinkSync(join(stage, file)) !== expected) throw new Error(`Installed link damaged: ${file}`);
+  const legacy = Object.hasOwn(mislabeledPacks, state.manifestSha256) ? mislabeledPacks[state.manifestSha256] : undefined;
+  if (legacy?.label === pack.version && state.manifestSha256 !== hash(manifestFile) && hash(join(stage, 'pack.json')) === state.manifestSha256) {
+    verifyInstalled(stage, state.manifestSha256);
+    console.log(legacy.version);
   }
 } else throw new Error(`Unknown install operation: ${command}`);
