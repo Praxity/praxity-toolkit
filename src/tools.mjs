@@ -40,8 +40,11 @@ export function toolInvocation(context, tool, args) {
   const directory = join(context.root, 'tools', tool.id);
   const entry = join(directory, tool.entry);
   if (!context.state.installed.includes(tool.id) || !existsSync(entry)) throw new Error(`${tool.id} is not installed. Run the reviewed install.sh after its archive is published.`);
+  const env = toolEnvironment(context);
+  // Studio can detect launcher death even before its first parent-PID snapshot.
+  if (tool.id === 'studio' && process.platform !== 'win32') env.PRAXITY_PARENT_PID = String(process.pid);
   return { command: tool.runner === 'node' ? context.node : entry,
-    args: tool.runner === 'node' ? [entry, ...args] : args, env: toolEnvironment(context) };
+    args: tool.runner === 'node' ? [entry, ...args] : args, env };
 }
 
 export function toolEnvironment(context) {
@@ -49,11 +52,14 @@ export function toolEnvironment(context) {
   const studio = context.pack.tools.find(tool => tool.id === 'studio');
   // Import's verifier needs Studio alone, rather than the umbrella dispatcher.
   const studioLauncher = join(context.root, 'bin', 'praxity-studio');
-  return { ...context.env,
+  const env = { ...context.env,
     PATH: [join(context.root, 'bin'), join(context.root, 'runtimes/node/bin'), context.env.PATH ?? ''].join(delimiter),
     PRAXITY_PRINT_TYPST: typst,
     ...(studio ? { PRAXITY_CLI: studioLauncher } : {}),
   };
+  // A parent identity belongs to one direct spawn, never an inherited tool chain.
+  delete env.PRAXITY_PARENT_PID;
+  return env;
 }
 
 export function probeProcess({ command, args, env }, options = {}) {

@@ -40,8 +40,60 @@ function launch(t, id, source, args, env = {}) {
     pids.push(state.pid);
     return state;
   };
-  return { launcher, exited, started, closed };
+  return { launcher, exited, started, closed, root: setup.root };
 }
+
+const parentIdentity = `import { writeFileSync } from 'node:fs';
+writeFileSync(process.env.TOOL_READY, JSON.stringify({ pid: process.pid, ppid: process.ppid, expectedParent: process.env.PRAXITY_PARENT_PID ?? null }));
+setInterval(() => {}, 1000);
+`;
+
+test('Studio receives the current launcher identity even if an older archive ignores it', posixOnly, async t => {
+  const { launcher, exited, started } = launch(t, 'studio', parentIdentity, ['studio', '.', '--no-open'], { PRAXITY_PARENT_PID: '999999' });
+  const { pid, ppid, expectedParent } = await started();
+  launcher.kill('SIGKILL');
+  assert.deepEqual(await exited, [null, 'SIGKILL']);
+  assert.equal(expectedParent, String(launcher.pid));
+  assert.equal(ppid, launcher.pid);
+  assert.equal(alive(pid), true, 'An older archive can ignore the optional identity');
+});
+
+for (const startup of [false, true]) {
+  test(`Studio's parent contract stops an orphan ${startup ? 'before its bootstrap' : 'after startup'}`, posixOnly, async t => {
+    const source = `import { existsSync, writeFileSync } from 'node:fs';
+import { setTimeout as delay } from 'node:timers/promises';
+const expectedParent = process.env.PRAXITY_PARENT_PID;
+const checkParent = () => {
+  if (expectedParent !== undefined && process.ppid !== Number(expectedParent)) {
+    writeFileSync(process.env.TOOL_CLOSED, JSON.stringify({ expectedParent, ppid: process.ppid, exitCode: 129 }));
+    process.exit(129);
+  }
+};
+${startup ? '' : 'checkParent(); setInterval(checkParent, 100);'}
+writeFileSync(process.env.TOOL_READY, JSON.stringify({ pid: process.pid, expectedParent: expectedParent ?? null }));
+${startup ? "while (!existsSync('bootstrap-go')) await delay(20); checkParent(); setInterval(checkParent, 100);" : ''}
+`;
+    const { launcher, exited, started, closed, root } = launch(t, 'studio', source, ['studio', '.', '--no-open']);
+    const { pid, expectedParent } = await started();
+    launcher.kill('SIGKILL');
+    assert.deepEqual(await exited, [null, 'SIGKILL']);
+    if (startup) writeFileSync(join(root, 'bootstrap-go'), 'go');
+    await until(() => existsSync(closed) && !alive(pid), 'Studio did not stop after launcher death', 5_000);
+    const stopped = JSON.parse(readFileSync(closed, 'utf8'));
+    assert.equal(expectedParent, String(launcher.pid));
+    assert.equal(stopped.expectedParent, expectedParent);
+    assert.notEqual(stopped.ppid, launcher.pid);
+    assert.equal(stopped.exitCode, 129);
+  });
+}
+
+test('unrelated tools do not inherit a Studio parent identity', posixOnly, async t => {
+  const { launcher, exited, started } = launch(t, 'check', parentIdentity, ['check'], { PRAXITY_PARENT_PID: '999999' });
+  const { expectedParent } = await started();
+  launcher.kill('SIGTERM');
+  assert.deepEqual(await exited, [143, null]);
+  assert.equal(expectedParent, null);
+});
 
 // Studio's standalone CLI stops on its first SIGINT or SIGTERM, removes both
 // listeners, and takes a moment to close its server. A second signal kills it.
