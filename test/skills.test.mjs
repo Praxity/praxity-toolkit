@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, watch, readdirSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, watch, readdirSync, unlinkSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync, spawn } from 'node:child_process';
@@ -447,4 +447,20 @@ test('doctor reports a changed toolkit skill as partial', async t => {
   const item = doctor(context, () => ({ code: 0, stdout: 'v24.21.0', stderr: '' })).items.find(item => item.id === 'host.codex.project');
   assert.equal(item.status, 'partial');
   assert.equal(item.message, 'Changed or out-of-date skills: studio-editor.');
+  assert.equal(item.fix, 'Move your edited copies of studio-editor out of .agents/skills, then run praxity skills install --host codex --scope project');
+  // Following the fix works: install recreates the moved skill.
+  renameSync(join(context.cwd, '.agents/skills/studio-editor'), join(context.cwd, 'studio-editor edited'));
+  await runCli(['skills', 'install', '--host', 'codex', '--scope', 'project'], context, { print: () => {} });
+  assert.equal(doctor(context, () => ({ code: 0, stdout: 'v24.21.0', stderr: '' })).items.find(item => item.id === 'host.codex.project').status, 'ok');
+  assert.equal(readFileSync(join(context.cwd, 'studio-editor edited/SKILL.md'), 'utf8'), 'Edited');
+});
+
+test('refresh reports a schema-1 record instead of migrating it', async t => {
+  const { context } = fixture(t), printed = [];
+  legacyInstall(context, 'claude');
+  const before = readFileSync(join(context.home, '.praxity/toolkit-skills.json'));
+  await runCli(['skills', 'refresh', '--scope', 'user'], context, { print: line => printed.push(line) });
+  assert.deepEqual(printed, ['Skills at user scope use an older ownership record and were not refreshed. Stop host sessions, then run praxity skills install --host claude --scope user.']);
+  assert.deepEqual(readFileSync(join(context.home, '.praxity/toolkit-skills.json')), before);
+  assert.ok(existsSync(join(context.home, '.claude/plugins/praxity/.claude-plugin/plugin.json')));
 });

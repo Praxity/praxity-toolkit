@@ -1,5 +1,5 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
-import { delimiter, join } from 'node:path';
+import { accessSync, constants, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
+import { delimiter, isAbsolute, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { toolInvocation, toolEnvironment, probeProcess, quotePosix, readDeclined } from './tools.mjs';
 import { adapters, buildAdapters, skillPresence } from './skills.mjs';
@@ -108,19 +108,25 @@ export function doctor(context, run = probeProcess) {
     });
     const generated = buildAdapters({ source: join(context.root, 'skills'), tools: toolSkills, packVersion: context.pack.version });
     for (const [scope, base] of [['user', context.home], ['project', context.cwd]]) for (const host of Object.keys(adapters)) {
-      const { current, stale, missing } = skillPresence({ base, host, outputs: generated });
-      const fix = `praxity skills install --host ${host} --scope ${scope}`;
+      const { current, stale, missing, edited } = skillPresence({ base, host, outputs: generated });
+      const install = `praxity skills install --host ${host} --scope ${scope}`;
+      // Install keeps edited owned files, but recreates moved or deleted ones.
+      const fix = edited.length ? `Move your edited copies of ${edited.join(', ')} out of ${adapters[host].skills}, then run ${install}` : install;
       if (!stale.length && !missing.length) items.push(item(`host.${host}.${scope}`, 'ok', `Skill files current in ${adapters[host].skills}; verify invocation in the host`));
       else if (!current.length && !stale.length) items.push(item(`host.${host}.${scope}`, 'not-installed', 'Generated adapter is absent', fix));
       else items.push(item(`host.${host}.${scope}`, 'partial', [missing.length && `Missing skills: ${missing.join(', ')}.`, stale.length && `Changed or out-of-date skills: ${stale.join(', ')}.`].filter(Boolean).join(' '), fix));
     }
     // T3 actions call the launcher by its full path, so a missing PATH entry
     // only affects typed commands. The doctor names the line; it never edits it.
-    const onPath = (context.env.PATH ?? '').split(delimiter).some(directory => directory && existsSync(join(directory, 'praxity')));
-    items.push(onPath ? item('launcher.path', 'ok', 'praxity is on PATH')
-      : item('launcher.path', 'not-installed', 'praxity is not on PATH. T3 course actions still work; in a terminal, type ~/.praxity/bin/praxity or add the PATH line.',
-        'Add this line to ~/.zshrc, then open a new terminal and restart T3: export PATH="$HOME/.praxity/bin:$PATH"'));
-    const result = { schemaVersion: 1, packVersion: context.pack.version, items, exitCode: items.some(item => item.status === 'failed') ? 1 : 0 };
+    // A shell runs the first executable praxity on PATH. Relative entries
+    // depend on the current folder, so they never count.
+    const executable = file => { try { accessSync(file, constants.X_OK); return statSync(file).isFile(); } catch { return false; } };
+    const found = (context.env.PATH ?? '').split(delimiter).filter(directory => isAbsolute(directory)).map(directory => join(directory, 'praxity')).find(executable);
+    const launcher = join(context.home, '.praxity/bin/praxity');
+    const pathFix = 'Add this line at the end of your shell startup file (~/.zshrc for zsh, ~/.bash_profile for bash), then open a new terminal and restart T3: export PATH="$HOME/.praxity/bin:$PATH"';
+    items.push(found && existsSync(launcher) && realpathSync(found) === realpathSync(launcher) ? item('launcher.path', 'ok', 'praxity on PATH is the toolkit launcher')
+      : item('launcher.path', 'not-installed', `${found ? `praxity on PATH runs ${found}, not the toolkit launcher` : 'praxity is not on PATH'}. T3 course actions still work; in a terminal, type ~/.praxity/bin/praxity or add the PATH line.`, pathFix));
+    const result = { schemaVersion: 2, packVersion: context.pack.version, items, exitCode: items.some(item => item.status === 'failed') ? 1 : 0 };
     const errors = validateSchema(result, loadSchema('doctor'));
     if (errors.length) throw new Error(errors.join('\n'));
     return result;

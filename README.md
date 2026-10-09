@@ -153,10 +153,12 @@ refused. Roll back to an intact previous pack, or use the backup procedure above
 before reinstalling. A different manifest needs a new pack version.
 
 Release candidates 1 and 2 labelled themselves 0.1.0 and installed to
-`~/.praxity/toolkit/0.1.0`. When you install 0.1.0, the installer recognises
+`~/.praxity/toolkit/0.1.0`. When you install any pack, the installer recognises
 either candidate by its manifest's SHA-256, checks its files, and moves it to
 `~/.praxity/toolkit/0.1.0-rc.1`. The version pointers follow it, so rollback
-still reaches it. Any other manifest in that folder is refused as before.
+still reaches it. While Studio or another praxity command runs from that
+folder, the installer refuses and asks you to close it first. Any other
+manifest in that folder is refused as before.
 
 Updates retain the previous version. Both version pointers change in one atomic
 rename. Rollback checks the destination pack and keeps the outgoing pack, even
@@ -198,7 +200,8 @@ The toolkit does not edit host settings, shell profiles or AGENTS files.
 Ownership and recovery intents live in `.praxity/toolkit-skills.json`. Existing
 single-host records migrate automatically. The former owned Claude plugin moves
 to plain skills, and its unchanged files are removed. Modified or unowned files
-are preserved and stop migration or removal. Stop active host sessions before
+are preserved and stop migration or removal. Install recreates owned files you
+deleted or moved away. Stop active host sessions before
 migrating the plugin, then start a new session without its old `--plugin-dir`.
 The generator emits only the two current layouts into a fresh output directory.
 
@@ -262,7 +265,7 @@ and invocation in the host to confirm runtime discovery.
 
 ## Doctor
 
-`schemas/doctor.schema.json` defines JSON version 1. Each item has an `id`,
+`schemas/doctor.schema.json` defines JSON version 2, which added `partial`. Each item has an `id`,
 `status`, `message` and `fix`. Status is `ok`, `failed`, `declined`,
 `not-installed` or `partial`. Exit code 1 means at least one failure. Missing
 tools, unused adapters, partial adapters and a missing PATH entry do not fail it.
@@ -274,7 +277,9 @@ SCORM fixture. It checks the shared Claude and Codex skill folders at both
 scopes, with `host.claude` and `host.codex` items. An adapter missing some of
 this pack's skills, or holding changed copies, is `partial`; its message names
 those skills and its fix is the `praxity skills install` command that refreshes
-them. `launcher.path` reports whether `praxity` is on PATH.
+them. Install keeps a copy you edited, so for those the fix first asks you to
+move it out of the skills folder. `launcher.path` reports whether the first
+`praxity` on PATH is the toolkit launcher.
 Probes time out after 30 seconds and cap captured output at 1 MiB.
 Temporary probe documents are removed. It does not launch an editor or run a
 full Check audit.

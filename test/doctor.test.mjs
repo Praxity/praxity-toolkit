@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { delimiter, dirname, join } from 'node:path';
+import { delimiter, dirname, join, relative } from 'node:path';
 import { doctor } from '../src/doctor.mjs';
 import { loadSchema, validateSchema } from '../src/schema.mjs';
 import { fixture, fakeTool } from './helpers.mjs';
@@ -110,17 +110,35 @@ for (const inventory of ['intact', 'damaged', 'unmanaged']) test(`past refusal c
   assert.equal(report.exitCode, 1);
 });
 
-test('doctor names the PATH line when praxity is not on PATH, without failing', t => {
+test('doctor names the PATH line when the toolkit launcher is not first on PATH, without failing', t => {
   const context = prepared(t);
-  const bin = join(context.root, 'bin'); mkdirSync(bin);
-  const path = () => doctor({ ...context, env: { ...context.env, PATH: [context.root, bin].join(delimiter) } }, runner(context));
-  const missing = path();
-  const item = missing.items.find(item => item.id === 'launcher.path');
-  assert.equal(item.status, 'not-installed');
-  assert.match(item.fix, /export PATH="\$HOME\/\.praxity\/bin:\$PATH"/);
-  assert.equal(missing.items.find(item => item.status === 'failed' && item.id === 'launcher.path'), undefined);
-  writeFileSync(join(bin, 'praxity'), '#!/bin/sh\n');
-  assert.equal(path().items.find(item => item.id === 'launcher.path').status, 'ok');
+  const bin = join(context.home, '.praxity/bin'), other = join(context.root, 'other bin');
+  mkdirSync(bin, { recursive: true }); mkdirSync(other);
+  const path = (...directories) => doctor({ ...context, env: { ...context.env, PATH: directories.join(delimiter) } }, runner(context)).items.find(item => item.id === 'launcher.path');
+  const missing = path(context.root, bin);
+  assert.equal(missing.status, 'not-installed');
+  assert.match(missing.message, /^praxity is not on PATH\./);
+  assert.equal(missing.fix, 'Add this line at the end of your shell startup file (~/.zshrc for zsh, ~/.bash_profile for bash), then open a new terminal and restart T3: export PATH="$HOME/.praxity/bin:$PATH"');
+  writeFileSync(join(bin, 'praxity'), '#!/bin/sh\n', { mode: 0o755 });
+  assert.equal(path(context.root, bin).status, 'ok');
+  // A relative entry depends on the current folder, so it never counts.
+  assert.equal(path(relative(process.cwd(), bin)).status, 'not-installed');
+  writeFileSync(join(other, 'praxity'), '#!/bin/sh\n', { mode: 0o755 });
+  const shadowed = path(other, bin);
+  assert.equal(shadowed.status, 'not-installed');
+  assert.match(shadowed.message, /^praxity on PATH runs .*other bin.*, not the toolkit launcher\./);
+  assert.equal(path(bin, other).status, 'ok');
+});
+
+// Windows has no execute bit.
+test('doctor skips a praxity on PATH that is not executable', { skip: process.platform === 'win32' && 'POSIX modes only' }, t => {
+  const context = prepared(t);
+  const bin = join(context.home, '.praxity/bin'), other = join(context.root, 'other bin');
+  mkdirSync(bin, { recursive: true }); mkdirSync(other);
+  writeFileSync(join(bin, 'praxity'), '#!/bin/sh\n', { mode: 0o755 });
+  writeFileSync(join(other, 'praxity'), 'notes\n', { mode: 0o644 });
+  const report = doctor({ ...context, env: { ...context.env, PATH: [other, bin].join(delimiter) } }, runner(context));
+  assert.equal(report.items.find(item => item.id === 'launcher.path').status, 'ok');
 });
 
 test('a missing Check browser says HTML checks cannot run and names the setup command', t => {

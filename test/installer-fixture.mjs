@@ -45,7 +45,7 @@ export function installation(t, options = {}) {
   writeFileSync(join(typst, 'LICENSE'), 'Typst fixture licence\n');
   pack.runtimes.typst.archives['darwin-arm64'] = archive(typst, join(root, 'typst archive.tar.gz'));
   if (options.tool !== false) {
-    for (const id of ['studio', 'trace', 'print']) {
+    for (const id of options.tools ?? ['studio', 'trace', 'print']) {
       const tool = pack.tools.find(tool => tool.id === id);
       const payload = join(root, `fake ${id}`);
       mkdirSync(dirname(join(payload, tool.entry)), { recursive: true });
@@ -66,6 +66,9 @@ export function installation(t, options = {}) {
     // Git Bash lacks stock macOS shasum. Emulate its exact invocation locally.
     const bin = join(root, 'fixture-bin'); mkdirSync(bin);
     writeFileSync(join(bin, 'shasum'), '#!/bin/sh\n[ "$1" = -a ] && [ "$2" = 256 ] || exit 99\nshift 2\nexec sha256sum "$@"\n', { mode: 0o755 });
+    // Git Bash's ps lacks -o. The in-use test runs on POSIX only, so here no
+    // process runs from a test pack.
+    writeFileSync(join(bin, 'ps'), '#!/bin/sh\n[ "$*" = "-A -ww -o args=" ] || exit 99\n', { mode: 0o755 });
     const init = join(root, 'bash-env'); writeFileSync(init, `export PATH=${quote(posix(bin))}:"$PATH"\n`);
     env.BASH_ENV = posix(init);
   }

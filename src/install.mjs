@@ -106,12 +106,15 @@ if (command === 'plan') {
 } else if (command === 'verify') {
   verifyInstalled(stage, hash(manifestFile));
 } else if (command === 'relabel') {
-  // Prints the folder name for an intact mislabeled release candidate that
-  // holds this version's folder. Any other manifest is left to verify's refusal.
-  const state = JSON.parse(readFileSync(join(stage, 'state.json'), 'utf8'));
-  const legacy = Object.hasOwn(mislabeledPacks, state.manifestSha256) ? mislabeledPacks[state.manifestSha256] : undefined;
-  if (legacy?.label === pack.version && state.manifestSha256 !== hash(manifestFile) && hash(join(stage, 'pack.json')) === state.manifestSha256) {
-    verifyInstalled(stage, state.manifestSha256);
-    console.log(legacy.version);
+  // Prints "label<TAB>candidate" for each intact mislabeled release candidate
+  // in the toolkit root, here the stage argument. A damaged one is refused;
+  // any other manifest in that folder is left to verify's refusal.
+  for (const [manifestSha256, legacy] of Object.entries(mislabeledPacks)) {
+    const folder = join(stage, legacy.label), stateFile = join(folder, 'state.json');
+    if (!existsSync(stateFile) || manifestSha256 === hash(manifestFile)) continue;
+    const state = JSON.parse(readFileSync(stateFile, 'utf8'));
+    if (state.manifestSha256 !== manifestSha256 || state.files?.['pack.json'] !== manifestSha256) continue;
+    verifyInstalled(folder, manifestSha256);
+    console.log(`${legacy.label}\t${legacy.version}`);
   }
 } else throw new Error(`Unknown install operation: ${command}`);

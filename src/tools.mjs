@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, lstatSync, renameSync, unlinkSync, realpathSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import { constants } from 'node:os';
 import { join, delimiter, dirname } from 'node:path';
 
 export const quotePosix = value => `'${value.replaceAll("'", "'\\''")}'`;
@@ -63,25 +64,33 @@ export function probeProcess({ command, args, env }, options = {}) {
 export async function executeTool(context, tool, args) {
   const invocation = toolInvocation(context, tool, args);
   const setup = args[0] === tool.setup?.[0];
-  const child = spawn(invocation.command, invocation.args, { env: invocation.env, stdio: ['inherit', setup ? 'pipe' : 'inherit', 'inherit'] });
+  // Stopping the launcher stops the tool, and the launcher exits only after
+  // the tool has. Other tools run in their own process group, so Ctrl+C in a
+  // terminal reaches only the launcher, which forwards it once: Studio stops
+  // on its first signal and dies on a second. Setup keeps the terminal for its
+  // consent prompts, so Ctrl+C already reaches it. Windows has no groups.
+  const child = spawn(invocation.command, invocation.args, { env: invocation.env,
+    detached: !setup && process.platform !== 'win32', stdio: ['inherit', setup ? 'pipe' : 'inherit', 'inherit'] });
   let output = '';
   if (setup) child.stdout.on('data', bytes => {
     process.stdout.write(bytes);
     output = (output + bytes.toString()).slice(-1024 * 1024);
   });
-  // Stopping the launcher stops the tool. Ctrl+C in a terminal reaches both
-  // processes; a signal sent to the launcher alone, as when T3 stops an
-  // action, is forwarded. The launcher exits only after the tool has.
-  const forward = signal => { if (child.exitCode === null && child.signalCode === null) child.kill(signal); };
+  const forward = signal => { if (!setup || signal !== 'SIGINT') child.kill(signal); };
   const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
   for (const signal of signals) process.on(signal, forward);
+  // Once the tool has exited there is nothing to forward to, and the launcher
+  // stops on the next signal even while a grandchild holds the tool's output.
+  const release = () => { for (const signal of signals) process.off(signal, forward); };
+  child.once('exit', release);
   let code;
   try {
     code = await new Promise((resolve, reject) => {
       child.on('error', reject);
-      child.on('close', (code, signal) => signal ? reject(new Error(`${tool.id} stopped by ${signal}`)) : resolve(code));
+      // A tool ended by a signal exits 128 plus its number, as a shell reports it.
+      child.on('close', (code, signal) => resolve(signal ? 128 + constants.signals[signal] : code));
     });
-  } finally { for (const signal of signals) process.off(signal, forward); }
+  } finally { release(); }
   if (setup && tool.id === 'check') {
     // Check currently exposes refusal in setup's text result, not doctor JSON.
     // Record only its explicit refusal line; never classify a missing component

@@ -35,7 +35,7 @@ test('version, doctor JSON and rollback dispatch have stable boundaries', async 
   const output = [];
   await runCli(['version'], context, { print: value => output.push(value) });
   assert.equal(JSON.parse(output.pop()).pack, '0.1.0');
-  const result = { schemaVersion: 1, packVersion: '0.1.0', items: [], exitCode: 1 };
+  const result = { schemaVersion: 2, packVersion: '0.1.0', items: [], exitCode: 1 };
   assert.equal(await runCli(['doctor', '--json'], context, { doctor: () => result, print: value => output.push(value) }), 1);
   assert.deepEqual(JSON.parse(output.pop()), result);
   const calls = [];

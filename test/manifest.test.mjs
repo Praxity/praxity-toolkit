@@ -70,7 +70,7 @@ for (const [name, mutate] of Object.entries(bad)) test(`manifest rejects ${name}
 });
 test('doctor wire schema requires stable fields and known statuses', () => {
   const schema = loadSchema('doctor');
-  const result = { schemaVersion: 1, packVersion: '0.1.0', exitCode: 1, items: [{ id: 'tool.check', status: 'failed', message: 'broken', fix: 'praxity setup check' }] };
+  const result = { schemaVersion: 2, packVersion: '0.1.0', exitCode: 1, items: [{ id: 'tool.check', status: 'failed', message: 'broken', fix: 'praxity setup check' }] };
   assert.deepEqual(validateSchema(result, schema), []);
   result.items[0].status = 'maybe';
   assert.ok(validateSchema(result, schema).length);

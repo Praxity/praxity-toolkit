@@ -29,3 +29,17 @@ test('an upgrade refreshes installed host skills and leaves user skills and othe
   assert.equal(readFileSync(userSkill, 'utf8'), 'USER SKILL');
   assert.equal(existsSync(join(setup.home, '.agents')), false);
 });
+
+test('a refused skill refresh still activates the pack and names the refresh command', t => {
+  const setup = installation(t);
+  passed(setup.install());
+  passed(shell(`${quote(posix(join(setup.home, '.praxity/bin/praxity')))} skills install --host claude --scope user`, { env: setup.env }));
+  const edited = join(setup.home, '.claude/skills/prax-format/SKILL.md');
+  writeFileSync(edited, 'MY EDITS');
+  setup.pack.version = '0.2.0'; setup.save();
+  const upgrade = setup.install(); passed(upgrade);
+  assert.match(upgrade.stderr, /Owned adapter changed/);
+  assert.match(upgrade.stderr, /then run praxity skills refresh --scope user\. Their ownership record is ~\/\.praxity\/toolkit-skills\.json\./);
+  assert.equal(readFileSync(join(setup.toolkit, 'active'), 'utf8'), '0.2.0\n0.1.0\n');
+  assert.equal(readFileSync(edited, 'utf8'), 'MY EDITS');
+});
