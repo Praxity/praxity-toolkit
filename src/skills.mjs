@@ -91,9 +91,22 @@ export function uninstallSkills(options) {
   return changeSkills({ ...options, remove: true });
 }
 
+// Regenerates the adapters already recorded in this scope, so a pack upgrade
+// adds and updates its skills. A scope without a record is left untouched.
+// A schema-1 claude record is reported, not migrated: migration moves the
+// former Claude plugin, which needs host sessions stopped first. Schema-1 t3
+// and codex records already use plain skill folders, so they migrate here.
+export function refreshSkills({ base, outputs }) {
+  const record = contained(realpathSync(base), '.praxity/toolkit-skills.json');
+  if (!existsSync(record)) return { hosts: [], files: [] };
+  const { schemaVersion, host } = JSON.parse(readFileSync(record, 'utf8'));
+  if (schemaVersion !== 2 && host === 'claude') return { hosts: [], files: [], legacyHost: host };
+  return changeSkills({ base, outputs, remove: false });
+}
+
 function changeSkills({ base, otherBase, host, outputs, remove }) {
-  host = canonicalHost(host);
-  if (!Object.hasOwn(adapters, host)) throw new Error('Host must be t3, claude or codex');
+  host = host === undefined ? undefined : canonicalHost(host);
+  if (host !== undefined && !Object.hasOwn(adapters, host)) throw new Error('Host must be t3, claude or codex');
   base = realpathSync(base);
   const ledger = contained(base, '.praxity/toolkit-skills.json');
   contained(base, '.praxity/toolkit-skills.json.tmp');
@@ -208,7 +221,8 @@ function changeSkills({ base, otherBase, host, outputs, remove }) {
     // Validate the entire recoverable transaction before its first mutation.
     for (const name of new Set([...Object.keys(tx.previous), ...Object.keys(tx.next.files)])) {
       const allowed = [tx.previous[name], tx.next.files[name]].filter(Boolean);
-      checkHash(name, allowed, tx.phase === 'remove' ? !Object.hasOwn(tx.next.files, name) : !Object.hasOwn(tx.previous, name));
+      // A deleted owned file holds nothing to preserve; staging replaces it.
+      checkHash(name, allowed, tx.phase === 'stage' || !Object.hasOwn(tx.next.files, name));
     }
     const generated = tx.next.schemaVersion === 2
       ? new Map(tx.next.hosts.flatMap(value => [...outputs[value]]))
@@ -264,12 +278,14 @@ function changeSkills({ base, otherBase, host, outputs, remove }) {
       acquire();
     }
     const hosts = new Set(hostsOf(state));
-    if (remove) hosts.delete(host); else hosts.add(host);
-    for (const [name, hash] of Object.entries(state.files)) checkHash(name, [hash]);
+    if (remove) hosts.delete(host); else if (host) hosts.add(host);
+    // A deleted owned file holds nothing to preserve. Install recreates it;
+    // removal drops it from the record.
+    for (const [name, hash] of Object.entries(state.files)) checkHash(name, [hash], true);
     // Removing one adapter keeps the exact installed bytes of the others.
     // Legacy plugin ownership still needs the migration to current layouts.
     const desired = remove && state.schemaVersion === 2
-      ? new Map(Object.keys(state.files).filter(name => [...hosts].some(value => name.startsWith(`${adapters[value].skills}/`))).map(name => [name, readFileSync(contained(base, name, true))]))
+      ? new Map(Object.keys(state.files).filter(name => [...hosts].some(value => name.startsWith(`${adapters[value].skills}/`)) && existsSync(contained(base, name, true))).map(name => [name, readFileSync(contained(base, name, true))]))
       : new Map([...hosts].sort().flatMap(value => [...outputs[value]]));
     // Distinct hosts can use distinct scopes; only visible copies compete.
     const roots = [...hosts].map(value => adapters[value].skills);
@@ -318,9 +334,28 @@ function changeSkills({ base, otherBase, host, outputs, remove }) {
   }
 }
 
-export function skillPresence({ base, host, names }) {
-  const adapter = adapters[canonicalHost(host)];
-  const expected = names.map(name => join(base, adapter.skills, name, 'SKILL.md'));
-  if (adapter.plugin) expected.push(join(base, adapter.plugin));
-  return expected.every(path => existsSync(path));
+// Sorts each generated skill by its files in base: current, stale or missing.
+// A stale skill is also edited when a file differs from its ownership record,
+// which skills install refuses to overwrite. Skills the pack does not
+// generate are ignored.
+export function skillPresence({ base, host, outputs }) {
+  const adapter = adapters[canonicalHost(host)], result = { current: [], stale: [], missing: [], edited: [] };
+  const record = join(base, '.praxity/toolkit-skills.json');
+  let owned = {};
+  if (existsSync(record)) {
+    try { owned = JSON.parse(readFileSync(record, 'utf8')).files ?? {}; } catch { owned = null; }
+    if (!owned || typeof owned !== 'object' || Array.isArray(owned)) throw new Error(`Unreadable skills ownership record: ${record}`);
+  }
+  const skills = new Map(), edited = new Set();
+  for (const [name, bytes] of outputs[canonicalHost(host)]) {
+    const skill = name.slice(adapter.skills.length + 1).split('/')[0];
+    const path = join(base, name), present = existsSync(path) ? readFileSync(path) : null;
+    skills.set(skill, (skills.get(skill) ?? true) && present !== null && present.equals(bytes));
+    if (present && Object.hasOwn(owned, name) && digest(present) !== owned[name]) edited.add(skill);
+  }
+  for (const [skill, current] of skills) {
+    result[current ? 'current' : existsSync(join(base, adapter.skills, skill, 'SKILL.md')) ? 'stale' : 'missing'].push(skill);
+  }
+  result.edited = result.stale.filter(skill => edited.has(skill));
+  return result;
 }

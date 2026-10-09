@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, lstatSync, statSync, readdirSync, realpathSync, readlinkSync } from 'node:fs';
 import { join, relative, isAbsolute, sep, dirname, resolve } from 'node:path';
-import { readManifest, installationPlan } from './manifest.mjs';
+import { readManifest, installationPlan, mislabeledPacks } from './manifest.mjs';
 import { buildAdapters } from './skills.mjs';
 import { quotePosix } from './tools.mjs';
 import { installJournal } from './install-ledger.mjs';
@@ -29,6 +29,19 @@ function inspectTree(root, directory = root, pending = false) {
       if (target === '..' || target.startsWith(`..${sep}`) || isAbsolute(target)) throw new Error(`Archive symlink escapes artifact: ${path}`);
     } else if (stat.isDirectory()) inspectTree(root, path, pending);
     else if (!stat.isFile()) throw new Error(`Archive contains special file: ${path}`);
+  }
+}
+
+function verifyInstalled(stage, manifestSha256, fix = 'Roll back or move this pack aside before reinstalling.') {
+  const state = JSON.parse(readFileSync(join(stage, 'state.json'), 'utf8'));
+  if (state.owner !== 'praxity-toolkit' || state.manifestSha256 !== manifestSha256) throw new Error('Pack version already exists with a different manifest');
+  inspectStage(stage);
+  for (const [file, expected] of Object.entries(state.files)) {
+    if (isAbsolute(file) || file.split(/[\\/]/).includes('..')) throw new Error('Unsafe installed inventory path');
+    if (!existsSync(join(stage, file)) || !lstatSync(join(stage, file)).isFile() || hash(join(stage, file)) !== expected) throw new Error(`Installed file damaged: ${file}. ${fix}`);
+  }
+  for (const [file, expected] of Object.entries(state.links ?? {})) {
+    if (isAbsolute(file) || file.split(/[\\/]/).includes('..') || !lstatSync(join(stage, file)).isSymbolicLink() || readlinkSync(join(stage, file)) !== expected) throw new Error(`Installed link damaged: ${file}`);
   }
 }
 
@@ -91,14 +104,21 @@ if (command === 'plan') {
     launcherSha256: hash(join(stage, 'launcher.sh')), files, links }, null, 2) + '\n');
   journal.write(join(stage, '.praxity-install'), 'praxity-toolkit\n');
 } else if (command === 'verify') {
-  const state = JSON.parse(readFileSync(join(stage, 'state.json'), 'utf8'));
-  if (state.owner !== 'praxity-toolkit' || state.manifestSha256 !== hash(manifestFile)) throw new Error('Pack version already exists with a different manifest');
-  inspectStage(stage);
-  for (const [file, expected] of Object.entries(state.files)) {
-    if (isAbsolute(file) || file.split(/[\\/]/).includes('..')) throw new Error('Unsafe installed inventory path');
-    if (!existsSync(join(stage, file)) || !lstatSync(join(stage, file)).isFile() || hash(join(stage, file)) !== expected) throw new Error(`Installed file damaged: ${file}. Roll back or move this pack aside before reinstalling.`);
-  }
-  for (const [file, expected] of Object.entries(state.links ?? {})) {
-    if (isAbsolute(file) || file.split(/[\\/]/).includes('..') || !lstatSync(join(stage, file)).isSymbolicLink() || readlinkSync(join(stage, file)) !== expected) throw new Error(`Installed link damaged: ${file}`);
+  verifyInstalled(stage, hash(manifestFile));
+} else if (command === 'relabel') {
+  // Prints "label<TAB>candidate" for each intact mislabeled release candidate
+  // in the toolkit root, here the stage argument. A damaged one is refused;
+  // any other manifest in that folder is left to verify's refusal.
+  for (const [manifestSha256, legacy] of Object.entries(mislabeledPacks)) {
+    const folder = join(stage, legacy.label), stateFile = join(folder, 'state.json');
+    if (!existsSync(stateFile) || manifestSha256 === hash(manifestFile)) continue;
+    const state = JSON.parse(readFileSync(stateFile, 'utf8'));
+    if (state.manifestSha256 !== manifestSha256 || state.files?.['pack.json'] !== manifestSha256) continue;
+    // Rollback cannot help: the candidate is the pack it would return to.
+    try { verifyInstalled(folder, manifestSha256, ''); } catch (error) {
+      console.error(`${folder} holds early release candidate ${legacy.version}, and it is damaged. ${error.message.trim()} Every install stops here until you move it aside. Follow the backup steps under Recovery in the toolkit README.`);
+      process.exit(1);
+    }
+    console.log(`${legacy.label}\t${legacy.version}`);
   }
 } else throw new Error(`Unknown install operation: ${command}`);

@@ -7,6 +7,7 @@ import { runCli } from '../src/cli.mjs';
 import { validateSchema } from '../src/schema.mjs';
 import { fixture } from './helpers.mjs';
 
+const launcher = '"$HOME/.praxity/bin/praxity"';
 const quiet = { print: () => {}, execute: () => { throw new Error('init must not launch a tool'); } };
 const readProject = folder => JSON.parse(readFileSync(join(folder, 't3.json'), 'utf8'));
 const portOf = folder => Number(new URL(readProject(folder).scripts.find(script => script.name === 'Open in Studio').previewUrl).port);
@@ -27,11 +28,11 @@ test('init defaults to the current course and writes portable T3 actions', async
   assert.deepEqual(project, {
     $schema: 'https://t3.codes/schema/t3.json',
     scripts: [
-      { name: 'Open in Studio', command: `praxity studio . --port ${port}`, icon: 'play', previewUrl: `http://127.0.0.1:${port}/launch`, autoOpenPreview: true },
-      { name: 'Export HTML', command: 'praxity export . --format html --output course-html.zip', icon: 'build' },
-      { name: 'Export PDF', command: 'praxity export . --format pdf --output course.pdf', icon: 'build' },
-      { name: 'Check accessibility', command: 'praxity check check course-html.zip --checks accessibility', icon: 'lint' },
-      { name: 'Doctor', command: 'praxity doctor', icon: 'configure' },
+      { name: 'Open in Studio', command: `${launcher} studio . --port ${port} --no-open`, icon: 'play', previewUrl: `http://127.0.0.1:${port}/launch`, autoOpenPreview: true },
+      { name: 'Export HTML', command: `${launcher} export . --format html --output course-html.zip`, icon: 'build' },
+      { name: 'Export PDF', command: `${launcher} export . --format pdf --output course.pdf`, icon: 'build' },
+      { name: 'Check accessibility', command: `${launcher} check check course-html.zip --checks accessibility`, icon: 'lint' },
+      { name: 'Doctor', command: `${launcher} doctor`, icon: 'configure' },
     ],
   });
   const bytes = readFileSync(join(context.cwd, 't3.json'), 'utf8');
@@ -60,7 +61,7 @@ test('init merges scripts in place and preserves other keys, scripts and formatt
   assert.deepEqual(after.scripts[2], before.scripts[2]);
   assert.equal(after.scripts[1].name, 'Export HTML');
   assert.equal(after.scripts[1].runOnWorktreeCreate, undefined);
-  assert.equal(after.scripts[3].command, 'praxity doctor');
+  assert.equal(after.scripts[3].command, `${launcher} doctor`);
   assert.equal(after.scripts.length, 7);
   assert.equal(readFileSync(file, 'utf8'), JSON.stringify(after, null, 4).replaceAll('\n', '\r\n') + '\r\n');
 });
@@ -162,6 +163,21 @@ test('init restores a committed course port when the local registry is missing',
   assert.equal(portOf(context.cwd), 41873);
 });
 
+for (const command of ['praxity studio . --port 41873', `${launcher} studio . --port 41873 --no-open`]) {
+  test(`init upgrades a committed ${command.startsWith('praxity') ? 'bare' : 'current'} Studio action and keeps its port`, async t => {
+    const { context } = fixture(t);
+    course(context.cwd);
+    writeFileSync(join(context.cwd, 't3.json'), JSON.stringify({ scripts: [
+      { name: 'Open in Studio', command }, { name: 'Doctor', command: 'praxity doctor' },
+    ] }));
+    await runCli(['init'], context, quiet);
+    const scripts = readProject(context.cwd).scripts;
+    assert.equal(scripts[0].command, `${launcher} studio . --port 41873 --no-open`);
+    assert.equal(scripts[0].previewUrl, 'http://127.0.0.1:41873/launch');
+    assert.equal(scripts[1].command, `${launcher} doctor`);
+  });
+}
+
 test('init avoids another registered course’s edited Studio port as well as its reservation', async t => {
   const { context } = fixture(t), second = course(join(context.root, 'second'));
   course(context.cwd);
@@ -246,6 +262,6 @@ test('init keeps an existing schema URL and updates each managed action once at 
   const project = readProject(context.cwd);
   assert.equal(project.$schema, 'custom-schema.json');
   assert.equal(project.scripts.length, 6);
-  assert.deepEqual(project.scripts[0], { name: 'Doctor', command: 'praxity doctor', icon: 'configure' });
+  assert.deepEqual(project.scripts[0], { name: 'Doctor', command: `${launcher} doctor`, icon: 'configure' });
   assert.deepEqual(project.scripts[1], { name: 'User', command: 'echo user' });
 });

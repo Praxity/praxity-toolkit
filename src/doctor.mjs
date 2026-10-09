@@ -1,5 +1,5 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { accessSync, constants, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
+import { delimiter, isAbsolute, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { toolInvocation, toolEnvironment, probeProcess, quotePosix, readDeclined } from './tools.mjs';
 import { adapters, buildAdapters, skillPresence } from './skills.mjs';
@@ -58,6 +58,12 @@ export function doctor(context, run = probeProcess) {
             : component.inventory === 'damaged' ? 'failed'
             : missing && declined[tool.id]?.includes(component.id) ? 'declined'
             : missing ? 'not-installed' : 'failed';
+          // Without its browser Check audits no HTML at all, and praxity check
+          // exits 2. Its setup selector html installs the browser.
+          if (component.id === 'browser' && status === 'not-installed') {
+            items.push(item(`tool.${tool.id}.${component.id}`, status, 'Browser not installed, so praxity check cannot audit HTML and exits 2. Setup downloads it after asking.', `praxity setup ${tool.id} html`));
+            continue;
+          }
           items.push(item(`tool.${tool.id}.${component.id}`, status, component.reason ?? (component.usable ? `Found ${component.version ?? 'component'}` : status === 'declined' ? 'Optional download was declined' : 'Component is unavailable'), status === 'ok' ? '' : fix));
         }
       } else {
@@ -101,12 +107,29 @@ export function doctor(context, run = probeProcess) {
       return context.state.installed.includes(tool.id) && existsSync(path) ? [path] : [];
     });
     const generated = buildAdapters({ source: join(context.root, 'skills'), tools: toolSkills, packVersion: context.pack.version });
-    const names = [...generated.claude.keys()].filter(name => name.endsWith('/SKILL.md')).map(name => name.split('/').at(-2));
     for (const [scope, base] of [['user', context.home], ['project', context.cwd]]) for (const host of Object.keys(adapters)) {
-      const present = skillPresence({ base, host, names });
-      items.push(item(`host.${host}.${scope}`, present ? 'ok' : 'not-installed', present ? `Skill files present in ${adapters[host].skills}; verify invocation in the host` : 'Generated adapter is absent', present ? '' : `praxity skills install --host ${host} --scope ${scope}`));
+      const install = `praxity skills install --host ${host} --scope ${scope}`;
+      let presence;
+      try { presence = skillPresence({ base, host, outputs: generated }); }
+      catch (error) { items.push(item(`host.${host}.${scope}`, 'failed', error.message, `Restore the record from a backup, or move it and the toolkit skills in ${adapters[host].skills} aside, then run ${install}`)); continue; }
+      const { current, stale, missing, edited } = presence;
+      // Install keeps edited owned files, but recreates moved or deleted ones.
+      const fix = edited.length ? `Move your edited copies of ${edited.join(', ')} out of ${adapters[host].skills}, then run ${install}` : install;
+      if (!stale.length && !missing.length) items.push(item(`host.${host}.${scope}`, 'ok', `Skill files current in ${adapters[host].skills}; verify invocation in the host`));
+      else if (!current.length && !stale.length) items.push(item(`host.${host}.${scope}`, 'not-installed', 'Generated adapter is absent', fix));
+      else items.push(item(`host.${host}.${scope}`, 'partial', [missing.length && `Missing skills: ${missing.join(', ')}.`, stale.length && `Changed or out-of-date skills: ${stale.join(', ')}.`].filter(Boolean).join(' '), fix));
     }
-    const result = { schemaVersion: 1, packVersion: context.pack.version, items, exitCode: items.some(item => item.status === 'failed') ? 1 : 0 };
+    // T3 actions call the launcher by its full path, so a missing PATH entry
+    // only affects typed commands. The doctor names the line; it never edits it.
+    // A shell runs the first executable praxity on PATH. Relative entries
+    // depend on the current folder, so they never count.
+    const executable = file => { try { accessSync(file, constants.X_OK); return statSync(file).isFile(); } catch { return false; } };
+    const found = (context.env.PATH ?? '').split(delimiter).filter(directory => isAbsolute(directory)).map(directory => join(directory, 'praxity')).find(executable);
+    const launcher = join(context.home, '.praxity/bin/praxity');
+    const pathFix = 'Add this line at the end of your shell startup file (~/.zshrc for zsh, ~/.bash_profile for bash), then open a new terminal and restart T3: export PATH="$HOME/.praxity/bin:$PATH"';
+    items.push(found && existsSync(launcher) && realpathSync(found) === realpathSync(launcher) ? item('launcher.path', 'ok', 'praxity on PATH is the toolkit launcher')
+      : item('launcher.path', 'not-installed', `${found ? `praxity on PATH runs ${found}, not the toolkit launcher` : 'praxity is not on PATH'}. T3 course actions still work; in a terminal, type ~/.praxity/bin/praxity or add the PATH line.`, pathFix));
+    const result = { schemaVersion: 2, packVersion: context.pack.version, items, exitCode: items.some(item => item.status === 'failed') ? 1 : 0 };
     const errors = validateSchema(result, loadSchema('doctor'));
     if (errors.length) throw new Error(errors.join('\n'));
     return result;

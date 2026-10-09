@@ -2,18 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, renameSync, symlinkSync, existsSync, lstatSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { installation, archive, posix, quote, shell } from './installer-fixture.mjs';
-
-function crashAfter(setup, command, condition) {
-  const bin = join(setup.root, 'crash-bin'), marker = join(setup.root, 'crashed');
-  mkdirSync(bin);
-  const real = shell(`command -v ${command}`).stdout.trim();
-  writeFileSync(join(bin, command), `#!/bin/sh\n${quote(real)} "$@"\ncode=$?\nif [ "$code" = 0 ] && [ ! -e ${quote(posix(marker))} ]; then\n${condition}\nfi\nexit "$code"\n`, { mode: 0o755 });
-  const init = join(setup.root, 'crash-env');
-  writeFileSync(init, (setup.env.BASH_ENV ? readFileSync(setup.env.BASH_ENV.replace(/^\/([a-z])\//, '$1:/'), 'utf8') : '') + `\nexport PATH=${quote(posix(bin))}:"$PATH"\n`);
-  setup.env.BASH_ENV = posix(init);
-  return marker;
-}
+import { installation, archive, posix, shell, quote, crashAfter } from './installer-fixture.mjs';
 
 for (const update of [false, true]) for (const boundary of ['extraction', 'version rename']) test(`rerun recovers ${update ? 'update' : 'first install'} killed after ${boundary}`, t => {
   const setup = installation(t, { tool: false });

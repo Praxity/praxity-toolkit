@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join, relative } from 'node:path';
 import { doctor } from '../src/doctor.mjs';
 import { loadSchema, validateSchema } from '../src/schema.mjs';
 import { fixture, fakeTool } from './helpers.mjs';
@@ -108,4 +108,56 @@ for (const inventory of ['intact', 'damaged', 'unmanaged']) test(`past refusal c
   const report = doctor(context, runner(context, check));
   assert.equal(report.items.find(item => item.id === 'tool.check.browser').status, 'failed');
   assert.equal(report.exitCode, 1);
+});
+
+test('doctor names the PATH line when the toolkit launcher is not first on PATH, without failing', t => {
+  const context = prepared(t);
+  const bin = join(context.home, '.praxity/bin'), other = join(context.root, 'other bin');
+  mkdirSync(bin, { recursive: true }); mkdirSync(other);
+  const path = (...directories) => doctor({ ...context, env: { ...context.env, PATH: directories.join(delimiter) } }, runner(context)).items.find(item => item.id === 'launcher.path');
+  const missing = path(context.root, bin);
+  assert.equal(missing.status, 'not-installed');
+  assert.match(missing.message, /^praxity is not on PATH\./);
+  assert.equal(missing.fix, 'Add this line at the end of your shell startup file (~/.zshrc for zsh, ~/.bash_profile for bash), then open a new terminal and restart T3: export PATH="$HOME/.praxity/bin:$PATH"');
+  writeFileSync(join(bin, 'praxity'), '#!/bin/sh\n', { mode: 0o755 });
+  assert.equal(path(context.root, bin).status, 'ok');
+  // A relative entry depends on the current folder, so it never counts.
+  assert.equal(path(relative(process.cwd(), bin)).status, 'not-installed');
+  writeFileSync(join(other, 'praxity'), '#!/bin/sh\n', { mode: 0o755 });
+  const shadowed = path(other, bin);
+  assert.equal(shadowed.status, 'not-installed');
+  assert.match(shadowed.message, /^praxity on PATH runs .*other bin.*, not the toolkit launcher\./);
+  assert.equal(path(bin, other).status, 'ok');
+});
+
+// Windows has no execute bit.
+test('doctor skips a praxity on PATH that is not executable', { skip: process.platform === 'win32' && 'POSIX modes only' }, t => {
+  const context = prepared(t);
+  const bin = join(context.home, '.praxity/bin'), other = join(context.root, 'other bin');
+  mkdirSync(bin, { recursive: true }); mkdirSync(other);
+  writeFileSync(join(bin, 'praxity'), '#!/bin/sh\n', { mode: 0o755 });
+  writeFileSync(join(other, 'praxity'), 'notes\n', { mode: 0o644 });
+  const report = doctor({ ...context, env: { ...context.env, PATH: [other, bin].join(delimiter) } }, runner(context));
+  assert.equal(report.items.find(item => item.id === 'launcher.path').status, 'ok');
+});
+
+test('a missing Check browser says HTML checks cannot run and names the setup command', t => {
+  const context = prepared(t);
+  const item = doctor(context, runner(context)).items.find(item => item.id === 'tool.check.browser');
+  assert.equal(item.status, 'not-installed');
+  assert.match(item.message, /cannot audit HTML and exits 2/);
+  assert.equal(item.fix, 'praxity setup check html');
+});
+
+for (const bytes of ['null', '{"files":']) test(`an unreadable skills ownership record (${bytes}) fails its own host items`, t => {
+  const context = prepared(t);
+  mkdirSync(join(context.home, '.praxity'), { recursive: true });
+  writeFileSync(join(context.home, '.praxity/toolkit-skills.json'), bytes);
+  const result = doctor(context, runner(context));
+  const item = result.items.find(item => item.id === 'host.codex.user');
+  assert.equal(item.status, 'failed');
+  assert.equal(item.message, `Unreadable skills ownership record: ${join(context.home, '.praxity/toolkit-skills.json')}`);
+  assert.equal(item.fix, 'Restore the record from a backup, or move it and the toolkit skills in .agents/skills aside, then run praxity skills install --host codex --scope user');
+  assert.equal(result.items.find(item => item.id === 'host.codex.project').status, 'not-installed');
+  assert.equal(result.exitCode, 1);
 });

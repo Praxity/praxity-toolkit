@@ -8,13 +8,17 @@ const portRule = stateSchema.properties.courses.items.properties.port;
 const schemaUrl = 'https://t3.codes/schema/t3.json';
 const maxScripts = 50;
 
+// T3 runs actions in a login shell that may not have ~/.praxity/bin on PATH
+// yet, so actions call the launcher by its home-relative path.
+const launcher = '"$HOME/.praxity/bin/praxity"';
+
 function actions(port) {
   return [
-    { name: 'Open in Studio', command: `praxity studio . --port ${port}`, icon: 'play', previewUrl: `http://127.0.0.1:${port}/launch`, autoOpenPreview: true },
-    { name: 'Export HTML', command: 'praxity export . --format html --output course-html.zip', icon: 'build' },
-    { name: 'Export PDF', command: 'praxity export . --format pdf --output course.pdf', icon: 'build' },
-    { name: 'Check accessibility', command: 'praxity check check course-html.zip --checks accessibility', icon: 'lint' },
-    { name: 'Doctor', command: 'praxity doctor', icon: 'configure' },
+    { name: 'Open in Studio', command: `${launcher} studio . --port ${port} --no-open`, icon: 'play', previewUrl: `http://127.0.0.1:${port}/launch`, autoOpenPreview: true },
+    { name: 'Export HTML', command: `${launcher} export . --format html --output course-html.zip`, icon: 'build' },
+    { name: 'Export PDF', command: `${launcher} export . --format pdf --output course.pdf`, icon: 'build' },
+    { name: 'Check accessibility', command: `${launcher} check check course-html.zip --checks accessibility`, icon: 'lint' },
+    { name: 'Doctor', command: `${launcher} doctor`, icon: 'configure' },
   ];
 }
 
@@ -63,7 +67,7 @@ function merge(project, port) {
 
 function studioPort(project) {
   const script = project.scripts?.find(script => script.name === 'Open in Studio');
-  const command = script?.command.match(/^praxity studio \. --port (\d+)$/);
+  const command = script?.command.match(/^(?:praxity|"\$HOME\/\.praxity\/bin\/praxity") studio \. --port (\d+)(?: --no-open)?$/);
   const preview = script?.previewUrl?.match?.(/^http:\/\/127\.0\.0\.1:(\d+)\/launch$/);
   return [...new Set([command, preview].filter(Boolean).map(match => Number(match[1])))];
 }

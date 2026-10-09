@@ -35,3 +35,14 @@ export function installationPlan(pack, platform) {
   }
   return entries;
 }
+
+// The v0.1.0-rc.1 and v0.1.0-rc.2 tags shipped manifests labelled 0.1.0, so
+// their packs sit in the 0.1.0 folder. Keyed by manifest SHA-256, the value is
+// the name the installer moves such a folder to. The rc.1 manifest pins only
+// Node and Typst; the rc.2 tag's manifest adds tool archives from the
+// v0.1.0-rc.1 release. The rc.2 archives arrived in a manifest labelled
+// 0.1.0-rc.2, which already has that folder name.
+export const mislabeledPacks = {
+  '920fbc4c99a8723221f8a0fa2f826328a4fbffbf0bfd919ad862d55a73d18b7c': { label: '0.1.0', version: '0.1.0-rc.1' },
+  'ddfc9f0da049a4df0943bc23dd02d376d3f2cd4e58d636519858aa3273ea85a6': { label: '0.1.0', version: '0.1.0-rc.1' },
+};

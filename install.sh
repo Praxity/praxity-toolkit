@@ -113,8 +113,17 @@ if [ -f "$ROOT/active" ]; then
     [ -n "$LEDGER_VERSION" ] || die 'No previous pack to roll back to'
     safe_version "$LEDGER_VERSION"
   fi
-  ledger_assert "$ROOT/$LEDGER_VERSION/runtimes/node/bin/node"
-  LEDGER_NODE="$ROOT/$LEDGER_VERSION/runtimes/node/bin/node"
+  if [ "$ACTION" = rollback ] || [ -e "$ROOT/$LEDGER_VERSION" ]; then
+    ledger_assert "$ROOT/$LEDGER_VERSION/runtimes/node/bin/node"
+    LEDGER_NODE="$ROOT/$LEDGER_VERSION/runtimes/node/bin/node"
+  else
+    # A relabel stopped before its folder move leaves active naming an absent
+    # pack. Another installed pack's Node keeps the journal fast; the shell
+    # journal takes minutes over a full Node tree.
+    for FALLBACK_NODE in "$ROOT"/*/runtimes/node/bin/node; do
+      if ledger_assert "$FALLBACK_NODE" 2>/dev/null; then LEDGER_NODE=$FALLBACK_NODE; break; fi
+    done
+  fi
 fi
 if [ "$ACTION" = rollback ]; then
   CURRENT=$(sed -n '1p' "$ROOT/active" 2>/dev/null) || die 'No current pack'
@@ -250,8 +259,33 @@ PLAN=$(new_temp)
 capture "$PLAN" "$NODE" "$SCRIPT_DIR/src/install.mjs" plan "$MANIFEST_FILE" "$PLATFORM"
 MANIFEST_SHA=$(sha256 "$MANIFEST_FILE")
 ledger_root_assert
+# Early release candidates labelled themselves with a later version. Move
+# each intact one to its candidate name, whatever version this installs, so
+# any later installer finishes a move an earlier run left half done.
+RELABELS=$(new_temp)
+capture "$RELABELS" "$NODE" "$SCRIPT_DIR/src/install.mjs" relabel "$MANIFEST_FILE" "$PLATFORM" "$ROOT"
+while IFS="$TAB" read -r LABEL RELABEL; do
+  safe_version "$LABEL"; safe_version "$RELABEL"
+  [ ! -e "$ROOT/$RELABEL" ] && [ ! -L "$ROOT/$RELABEL" ] || die "Pack $LABEL holds release candidate $RELABEL, which is also installed. Move $ROOT/$LABEL outside ~/.praxity, then rerun."
+  # Studio keeps absolute paths into its pack while it runs.
+  PROCESSES=$(ps -A -ww -o pid=,args=) || die 'Cannot list running processes'
+  IN_USE=$(printf '%s\n' "$PROCESSES" | grep -F -- "$ROOT/$LABEL/" || true)
+  [ -z "$IN_USE" ] || die "Pack $LABEL is in use by these processes:
+$IN_USE
+Close Studio and stop the other processes listed, then rerun."
+  # Repoint active before the move. A rerun after a stop between them finds
+  # the candidate still in place and finishes the move.
+  if [ -f "$ROOT/active" ]; then
+    POINTERS=$(new_temp)
+    capture "$POINTERS" awk -v from="$LABEL" -v to="$RELABEL" '{print ($0 == from ? to : $0)}' "$ROOT/active"
+    owned_publish "$POINTERS" "$ROOT/active"
+  fi
+  "$NODE" "$SCRIPT_DIR/src/install-ledger.mjs" intent-move "$INSTALL_HOME" "$ROOT" "$ROOT/$RELABEL" "$ROOT/$LABEL"
+  mv "$ROOT/$LABEL" "$ROOT/$RELABEL"
+  ledger_tree_record "$ROOT/$RELABEL"
+  printf 'Moved release candidate %s, which was labelled %s, to %s.\n' "$RELABEL" "$LABEL" "$ROOT/$RELABEL"
+done < "$RELABELS"
 if [ -e "$ROOT/$VERSION" ]; then
-  owned_version "$VERSION"
   "$NODE" "$SCRIPT_DIR/src/install.mjs" verify "$MANIFEST_FILE" "$PLATFORM" "$ROOT/$VERSION"
 else
   STAGE="$ROOT/.staging-$VERSION"
@@ -316,6 +350,13 @@ fi
 activate "$VERSION" "$PREVIOUS"
 LEDGER_NODE="$ROOT/$VERSION/runtimes/node/$NODE_ENTRY"
 owned_remove_tree "$BOOTSTRAP"
+# A new pack can add or change skills. Refresh only host adapters the user
+# installed in their home; their ownership record names the files.
+# Packs before 0.1.0 have no refresh command. Reactivating one, as a rerun
+# of its installer does, leaves host skills as they are.
+if grep -q 'refreshSkills' "$ROOT/$VERSION/src/cli.mjs"; then
+  "$BIN/praxity" skills refresh --scope user || printf '%s\n' 'Host skills were not refreshed; the pack is active. Resolve the file named above, then run praxity skills refresh --scope user. Their ownership record is ~/.praxity/toolkit-skills.json.' >&2
+fi
 printf 'Installed pack %s. Add this line to PATH yourself:\n' "$VERSION"
 printf 'export PATH="$HOME/.praxity/bin:$PATH"\n'
 printf '%s\n' 'Close Studio before rollback or uninstall. Optional components require praxity setup consent.'

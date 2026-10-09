@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, watch, readdirSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, watch, readdirSync, unlinkSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync, spawn } from 'node:child_process';
 import { buildAdapters, installSkills, uninstallSkills } from '../src/skills.mjs';
 import { runCli } from '../src/cli.mjs';
 import { doctor } from '../src/doctor.mjs';
-import { fixture, repository } from './helpers.mjs';
+import { fixture, fakeTool, repository } from './helpers.mjs';
 
 const outputsFor = context => buildAdapters({ source: join(context.root, 'skills'), packVersion: context.pack.version });
 const readState = base => JSON.parse(readFileSync(join(base, '.praxity/toolkit-skills.json'), 'utf8'));
@@ -91,6 +91,20 @@ test('selective uninstall retains the exact installed content when the canonical
   assert.deepEqual(readFileSync(join(context.home, '.claude/skills/studio-editor/SKILL.md')), before);
   assert.deepEqual(readState(context.home).hosts, ['claude']);
   assert.equal(existsSync(join(context.home, '.agents/skills/studio-editor/SKILL.md')), false);
+});
+
+test('uninstall tolerates owned files the user deleted, in the removed and the kept adapter', t => {
+  const { context } = fixture(t), outputs = outputsFor(context);
+  for (const host of ['claude', 'codex']) installSkills({ base: context.home, host, outputs });
+  unlinkSync(join(context.home, '.claude/skills/studio-editor/SKILL.md'));
+  unlinkSync(join(context.home, '.agents/skills/studio-editor/SKILL.md'));
+  uninstallSkills({ base: context.home, host: 'claude', outputs });
+  assert.deepEqual(readState(context.home).hosts, ['codex']);
+  assert.equal(existsSync(join(context.home, '.claude/skills/install-praxity/SKILL.md')), false);
+  assert.ok(existsSync(join(context.home, '.agents/skills/install-praxity/SKILL.md')));
+  assert.equal(Object.hasOwn(readState(context.home).files, '.agents/skills/studio-editor/SKILL.md'), false);
+  uninstallSkills({ base: context.home, host: 'codex', outputs });
+  assert.deepEqual(readState(context.home).files, {});
 });
 
 for (const obstacle of ['modified', 'unowned']) test(`uninstall refuses ${obstacle} content inside an owned skill before removing files`, t => {
@@ -418,4 +432,64 @@ for (const phase of ['stage', 'remove']) test(`interrupted adapter addition reco
   assert.ok(existsSync(join(context.home, '.agents/skills/install-praxity/SKILL.md')));
   assert.equal(existsSync(join(context.home, '.claude/skills/install-praxity/SKILL.md')), true);
   assert.equal(existsSync(join(context.home, '.praxity/toolkit-skills.lock')), false);
+});
+
+test('doctor names skills missing after an upgrade, and refresh adds them without touching user skills', async t => {
+  const { context } = fixture(t), quiet = { print: () => {} };
+  await runCli(['skills', 'install', '--host', 'claude', '--scope', 'user'], context, quiet);
+  const userSkill = join(context.home, '.claude/skills/my-notes/SKILL.md');
+  mkdirSync(join(userSkill, '..')); writeFileSync(userSkill, 'USER SKILL');
+  // The upgraded pack adds Import and its skill.
+  fakeTool(context, 'import');
+  mkdirSync(join(context.root, 'tools/import/skill'));
+  writeFileSync(join(context.root, 'tools/import/skill/SKILL.md'), '---\nname: praxity-import\ndescription: Convert a course.\n---\nImport skill.\n');
+  const host = () => doctor(context, () => ({ code: 0, stdout: 'v24.21.0', stderr: '' })).items.find(item => item.id === 'host.claude.user');
+  assert.deepEqual(host(), { id: 'host.claude.user', status: 'partial', message: 'Missing skills: praxity-import.', fix: 'praxity skills install --host claude --scope user' });
+  await runCli(['skills', 'refresh', '--scope', 'user'], context, quiet);
+  assert.equal(host().status, 'ok');
+  assert.equal(readFileSync(userSkill, 'utf8'), 'USER SKILL');
+  assert.deepEqual(readState(context.home).hosts, ['claude']);
+  assert.equal(existsSync(join(context.home, '.agents')), false);
+  await runCli(['skills', 'refresh', '--scope', 'project'], context, quiet);
+  assert.equal(existsSync(join(context.cwd, '.praxity')), false);
+});
+
+test('doctor reports a changed toolkit skill as partial', async t => {
+  const { context } = fixture(t);
+  await runCli(['skills', 'install', '--host', 'codex', '--scope', 'project'], context, { print: () => {} });
+  writeFileSync(join(context.cwd, '.agents/skills/studio-editor/SKILL.md'), 'Edited');
+  const item = doctor(context, () => ({ code: 0, stdout: 'v24.21.0', stderr: '' })).items.find(item => item.id === 'host.codex.project');
+  assert.equal(item.status, 'partial');
+  assert.equal(item.message, 'Changed or out-of-date skills: studio-editor.');
+  assert.equal(item.fix, 'Move your edited copies of studio-editor out of .agents/skills, then run praxity skills install --host codex --scope project');
+  // Following the fix works: install recreates the moved skill.
+  renameSync(join(context.cwd, '.agents/skills/studio-editor'), join(context.cwd, 'studio-editor edited'));
+  await runCli(['skills', 'install', '--host', 'codex', '--scope', 'project'], context, { print: () => {} });
+  assert.equal(doctor(context, () => ({ code: 0, stdout: 'v24.21.0', stderr: '' })).items.find(item => item.id === 'host.codex.project').status, 'ok');
+  assert.equal(readFileSync(join(context.cwd, 'studio-editor edited/SKILL.md'), 'utf8'), 'Edited');
+});
+
+test('doctor sees an rc.1 t3 install as the claude adapter, and refresh adds its missing skills', async t => {
+  const { context } = fixture(t), printed = [];
+  const files = legacyInstall(context, 't3');
+  fakeTool(context, 'import');
+  mkdirSync(join(context.root, 'tools/import/skill'));
+  writeFileSync(join(context.root, 'tools/import/skill/SKILL.md'), '---\nname: praxity-import\ndescription: Convert a course.\n---\nImport skill.\n');
+  const host = () => doctor(context, () => ({ code: 0, stdout: 'v24.21.0', stderr: '' })).items.find(item => item.id === 'host.claude.user');
+  assert.deepEqual(host(), { id: 'host.claude.user', status: 'partial', message: 'Missing skills: praxity-import.', fix: 'praxity skills install --host claude --scope user' });
+  await runCli(['skills', 'refresh', '--scope', 'user'], context, { print: line => printed.push(line) });
+  assert.deepEqual(printed, ['Refreshed claude skills at user scope. Restart the host to load them.']);
+  assert.equal(host().status, 'ok');
+  assert.deepEqual(readState(context.home).hosts, ['claude']);
+  for (const [name, bytes] of files) assert.deepEqual(readFileSync(join(context.home, name)), bytes);
+});
+
+test('refresh reports a schema-1 claude record instead of migrating it', async t => {
+  const { context } = fixture(t), printed = [];
+  legacyInstall(context, 'claude');
+  const before = readFileSync(join(context.home, '.praxity/toolkit-skills.json'));
+  await runCli(['skills', 'refresh', '--scope', 'user'], context, { print: line => printed.push(line) });
+  assert.deepEqual(printed, ['Skills at user scope use an older ownership record and were not refreshed. Stop host sessions, then run praxity skills install --host claude --scope user.']);
+  assert.deepEqual(readFileSync(join(context.home, '.praxity/toolkit-skills.json')), before);
+  assert.ok(existsSync(join(context.home, '.claude/plugins/praxity/.claude-plugin/plugin.json')));
 });
