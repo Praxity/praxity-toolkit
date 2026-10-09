@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync, symlinkSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync, symlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -68,7 +68,7 @@ export function installation(t, options = {}) {
     writeFileSync(join(bin, 'shasum'), '#!/bin/sh\n[ "$1" = -a ] && [ "$2" = 256 ] || exit 99\nshift 2\nexec sha256sum "$@"\n', { mode: 0o755 });
     // Git Bash's ps lacks -o. The in-use test runs on POSIX only, so here no
     // process runs from a test pack.
-    writeFileSync(join(bin, 'ps'), '#!/bin/sh\n[ "$*" = "-A -ww -o args=" ] || exit 99\n', { mode: 0o755 });
+    writeFileSync(join(bin, 'ps'), '#!/bin/sh\n[ "$*" = "-A -ww -o pid=,args=" ] || exit 99\n', { mode: 0o755 });
     const init = join(root, 'bash-env'); writeFileSync(init, `export PATH=${quote(posix(bin))}:"$PATH"\n`);
     env.BASH_ENV = posix(init);
   }
@@ -88,4 +88,19 @@ export function crashAfter(setup, command, condition) {
   writeFileSync(init, (setup.env.BASH_ENV ? readFileSync(setup.env.BASH_ENV.replace(/^\/([a-z])\//, '$1:/'), 'utf8') : '') + `\nexport PATH=${quote(posix(bin))}:"$PATH"\n`);
   setup.env.BASH_ENV = posix(init);
   return marker;
+}
+
+// Replaces one file of an installed pack as its installer would have written
+// it: the pack's inventory and the install journal agree on the new bytes.
+export function replaceInstalled(setup, version, file, bytes) {
+  const folder = join(setup.toolkit, version), stateFile = join(folder, 'state.json');
+  const digest = data => createHash('sha256').update(data).digest('hex');
+  writeFileSync(join(folder, file), bytes);
+  const state = JSON.parse(readFileSync(stateFile, 'utf8'));
+  state.files[file] = digest(bytes);
+  if (file === 'pack.json') state.manifestSha256 = digest(bytes);
+  const stateBytes = JSON.stringify(state, null, 2) + '\n';
+  writeFileSync(stateFile, stateBytes);
+  appendFileSync(join(setup.toolkit, '.install-ledger.tsv'),
+    `F\t${digest(bytes)}\t.praxity/toolkit/${version}/${file}\nF\t${digest(stateBytes)}\t.praxity/toolkit/${version}/state.json\n`);
 }

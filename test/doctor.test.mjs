@@ -148,3 +148,16 @@ test('a missing Check browser says HTML checks cannot run and names the setup co
   assert.match(item.message, /cannot audit HTML and exits 2/);
   assert.equal(item.fix, 'praxity setup check html');
 });
+
+for (const bytes of ['null', '{"files":']) test(`an unreadable skills ownership record (${bytes}) fails its own host items`, t => {
+  const context = prepared(t);
+  mkdirSync(join(context.home, '.praxity'), { recursive: true });
+  writeFileSync(join(context.home, '.praxity/toolkit-skills.json'), bytes);
+  const result = doctor(context, runner(context));
+  const item = result.items.find(item => item.id === 'host.codex.user');
+  assert.equal(item.status, 'failed');
+  assert.equal(item.message, `Unreadable skills ownership record: ${join(context.home, '.praxity/toolkit-skills.json')}`);
+  assert.equal(item.fix, 'Restore the record from a backup, or move it and the toolkit skills in .agents/skills aside, then run praxity skills install --host codex --scope user');
+  assert.equal(result.items.find(item => item.id === 'host.codex.project').status, 'not-installed');
+  assert.equal(result.exitCode, 1);
+});

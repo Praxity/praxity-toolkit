@@ -41,6 +41,8 @@ test('version, doctor JSON and rollback dispatch have stable boundaries', async 
   const calls = [];
   assert.equal(await runCli(['rollback'], context, { rollback: (...args) => { calls.push(args); return { code: 0 }; } }), 0);
   assert.deepEqual(calls[0][0].args, [join(context.root, 'install.sh'), 'rollback']);
+  // A slow rollback runs to the end rather than being killed partway.
+  assert.equal(calls[0][1].timeout, undefined);
   await assert.rejects(runCli(['doctor', '--unknown'], context), /Usage/);
   await assert.rejects(runCli(['skills', 'install', '--host', 'bad', '--scope', 'user'], context), /valid/);
 });

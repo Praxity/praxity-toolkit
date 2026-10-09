@@ -75,6 +75,14 @@ test('Ctrl+C in a terminal reaches Studio once, so it closes cleanly', posixOnly
   assert.ok(existsSync(closed), 'Studio was killed before it closed');
 });
 
+test('Ctrl+\\ in a terminal stops Studio with the launcher', posixOnly, async t => {
+  const { launcher, exited, started } = launch(t, 'studio', studio, ['studio', '.', '--no-open']);
+  const { pid } = await started();
+  process.kill(-launcher.pid, 'SIGQUIT');
+  assert.deepEqual(await exited, [128 + 3, null]);
+  await until(() => !alive(pid), 'Studio outlived its launcher');
+});
+
 test('Ctrl+C during setup reaches the tool once', posixOnly, async t => {
   const { launcher, exited, started, closed } = launch(t, 'check', `import { writeFileSync } from 'node:fs';
 process.once('SIGINT', () => setTimeout(() => { writeFileSync(process.env.TOOL_CLOSED, 'closed'); process.exit(0); }, 500));

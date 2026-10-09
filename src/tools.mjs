@@ -65,10 +65,12 @@ export async function executeTool(context, tool, args) {
   const invocation = toolInvocation(context, tool, args);
   const setup = args[0] === tool.setup?.[0];
   // Stopping the launcher stops the tool, and the launcher exits only after
-  // the tool has. Other tools run in their own process group, so Ctrl+C in a
-  // terminal reaches only the launcher, which forwards it once: Studio stops
-  // on its first signal and dies on a second. Setup keeps the terminal for its
-  // consent prompts, so Ctrl+C already reaches it. Windows has no groups.
+  // the tool has. Other tools run detached: Node calls setsid(), so each gets
+  // a new session without the terminal as its controlling terminal. Ctrl+C
+  // and Ctrl+\ then reach only the launcher, which forwards them once: Studio
+  // stops on its first signal and dies on a second. Ctrl+Z suspends only the
+  // launcher; the tool keeps running. Setup keeps the terminal for its consent
+  // prompts, so the terminal's signals already reach it. Windows has neither.
   const child = spawn(invocation.command, invocation.args, { env: invocation.env,
     detached: !setup && process.platform !== 'win32', stdio: ['inherit', setup ? 'pipe' : 'inherit', 'inherit'] });
   let output = '';
@@ -76,8 +78,8 @@ export async function executeTool(context, tool, args) {
     process.stdout.write(bytes);
     output = (output + bytes.toString()).slice(-1024 * 1024);
   });
-  const forward = signal => { if (!setup || signal !== 'SIGINT') child.kill(signal); };
-  const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+  const forward = signal => { if (!setup || !['SIGINT', 'SIGQUIT'].includes(signal)) child.kill(signal); };
+  const signals = ['SIGINT', 'SIGQUIT', 'SIGTERM', 'SIGHUP'];
   for (const signal of signals) process.on(signal, forward);
   // Once the tool has exited there is nothing to forward to, and the launcher
   // stops on the next signal even while a grandchild holds the tool's output.

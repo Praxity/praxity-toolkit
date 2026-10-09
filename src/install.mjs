@@ -32,13 +32,13 @@ function inspectTree(root, directory = root, pending = false) {
   }
 }
 
-function verifyInstalled(stage, manifestSha256) {
+function verifyInstalled(stage, manifestSha256, fix = 'Roll back or move this pack aside before reinstalling.') {
   const state = JSON.parse(readFileSync(join(stage, 'state.json'), 'utf8'));
   if (state.owner !== 'praxity-toolkit' || state.manifestSha256 !== manifestSha256) throw new Error('Pack version already exists with a different manifest');
   inspectStage(stage);
   for (const [file, expected] of Object.entries(state.files)) {
     if (isAbsolute(file) || file.split(/[\\/]/).includes('..')) throw new Error('Unsafe installed inventory path');
-    if (!existsSync(join(stage, file)) || !lstatSync(join(stage, file)).isFile() || hash(join(stage, file)) !== expected) throw new Error(`Installed file damaged: ${file}. Roll back or move this pack aside before reinstalling.`);
+    if (!existsSync(join(stage, file)) || !lstatSync(join(stage, file)).isFile() || hash(join(stage, file)) !== expected) throw new Error(`Installed file damaged: ${file}. ${fix}`);
   }
   for (const [file, expected] of Object.entries(state.links ?? {})) {
     if (isAbsolute(file) || file.split(/[\\/]/).includes('..') || !lstatSync(join(stage, file)).isSymbolicLink() || readlinkSync(join(stage, file)) !== expected) throw new Error(`Installed link damaged: ${file}`);
@@ -114,7 +114,11 @@ if (command === 'plan') {
     if (!existsSync(stateFile) || manifestSha256 === hash(manifestFile)) continue;
     const state = JSON.parse(readFileSync(stateFile, 'utf8'));
     if (state.manifestSha256 !== manifestSha256 || state.files?.['pack.json'] !== manifestSha256) continue;
-    verifyInstalled(folder, manifestSha256);
+    // Rollback cannot help: the candidate is the pack it would return to.
+    try { verifyInstalled(folder, manifestSha256, ''); } catch (error) {
+      console.error(`${folder} holds early release candidate ${legacy.version}, and it is damaged. ${error.message.trim()} Every install stops here until you move it aside. Follow the backup steps under Recovery in the toolkit README.`);
+      process.exit(1);
+    }
     console.log(`${legacy.label}\t${legacy.version}`);
   }
 } else throw new Error(`Unknown install operation: ${command}`);

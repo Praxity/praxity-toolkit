@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { installation, archive, posix, quote, shell } from './installer-fixture.mjs';
+import { installation, archive, posix, quote, shell, replaceInstalled } from './installer-fixture.mjs';
 
 const passed = result => assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 
@@ -42,4 +42,14 @@ test('a refused skill refresh still activates the pack and names the refresh com
   assert.match(upgrade.stderr, /then run praxity skills refresh --scope user\. Their ownership record is ~\/\.praxity\/toolkit-skills\.json\./);
   assert.equal(readFileSync(join(setup.toolkit, 'active'), 'utf8'), '0.2.0\n0.1.0\n');
   assert.equal(readFileSync(edited, 'utf8'), 'MY EDITS');
+});
+
+test('reactivating a pack whose CLI predates skills refresh skips the refresh quietly', t => {
+  const setup = installation(t);
+  passed(setup.install());
+  // Packs before 0.1.0 answer skills refresh with their usage line.
+  replaceInstalled(setup, '0.1.0', 'src/cli.mjs', "console.error('Usage: praxity skills install|uninstall'); process.exit(1);\n");
+  const rerun = setup.install(); passed(rerun);
+  assert.doesNotMatch(rerun.stderr, /Usage|not refreshed/);
+  assert.match(rerun.stdout, /Installed pack 0\.1\.0/);
 });

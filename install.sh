@@ -268,8 +268,11 @@ while IFS="$TAB" read -r LABEL RELABEL; do
   safe_version "$LABEL"; safe_version "$RELABEL"
   [ ! -e "$ROOT/$RELABEL" ] && [ ! -L "$ROOT/$RELABEL" ] || die "Pack $LABEL holds release candidate $RELABEL, which is also installed. Move $ROOT/$LABEL outside ~/.praxity, then rerun."
   # Studio keeps absolute paths into its pack while it runs.
-  PROCESSES=$(ps -A -ww -o args=) || die 'Cannot list running processes'
-  case "$PROCESSES" in *"$ROOT/$LABEL/"*) die "Pack $LABEL is in use. Close Studio and other praxity commands, then rerun." ;; esac
+  PROCESSES=$(ps -A -ww -o pid=,args=) || die 'Cannot list running processes'
+  IN_USE=$(printf '%s\n' "$PROCESSES" | grep -F -- "$ROOT/$LABEL/" || true)
+  [ -z "$IN_USE" ] || die "Pack $LABEL is in use by these processes:
+$IN_USE
+Close Studio and stop the other processes listed, then rerun."
   # Repoint active before the move. A rerun after a stop between them finds
   # the candidate still in place and finishes the move.
   if [ -f "$ROOT/active" ]; then
@@ -349,7 +352,11 @@ LEDGER_NODE="$ROOT/$VERSION/runtimes/node/$NODE_ENTRY"
 owned_remove_tree "$BOOTSTRAP"
 # A new pack can add or change skills. Refresh only host adapters the user
 # installed in their home; their ownership record names the files.
-"$BIN/praxity" skills refresh --scope user || printf '%s\n' 'Host skills were not refreshed; the pack is active. Resolve the file named above, then run praxity skills refresh --scope user. Their ownership record is ~/.praxity/toolkit-skills.json.' >&2
+# Packs before 0.1.0 have no refresh command. Reactivating one, as a rerun
+# of its installer does, leaves host skills as they are.
+if grep -q 'refreshSkills' "$ROOT/$VERSION/src/cli.mjs"; then
+  "$BIN/praxity" skills refresh --scope user || printf '%s\n' 'Host skills were not refreshed; the pack is active. Resolve the file named above, then run praxity skills refresh --scope user. Their ownership record is ~/.praxity/toolkit-skills.json.' >&2
+fi
 printf 'Installed pack %s. Add this line to PATH yourself:\n' "$VERSION"
 printf 'export PATH="$HOME/.praxity/bin:$PATH"\n'
 printf '%s\n' 'Close Studio before rollback or uninstall. Optional components require praxity setup consent.'

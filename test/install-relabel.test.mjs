@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { installation, posix, quote, shell, crashAfter } from './installer-fixture.mjs';
+import { installation, posix, quote, shell, crashAfter, replaceInstalled } from './installer-fixture.mjs';
 
 const passed = result => assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -16,14 +16,7 @@ const pointers = setup => readFileSync(join(setup.toolkit, 'active'), 'utf8');
 // installed it: its manifest, state and journal agree on the candidate's bytes.
 function installCandidate(setup, bytes) {
   passed(setup.install());
-  const folder = join(setup.toolkit, '0.1.0'), stateFile = join(folder, 'state.json');
-  writeFileSync(join(folder, 'pack.json'), bytes);
-  const state = JSON.parse(readFileSync(stateFile, 'utf8'));
-  state.manifestSha256 = state.files['pack.json'] = digest(bytes);
-  const stateBytes = JSON.stringify(state, null, 2) + '\n';
-  writeFileSync(stateFile, stateBytes);
-  appendFileSync(join(setup.toolkit, '.install-ledger.tsv'),
-    `F\t${digest(bytes)}\t.praxity/toolkit/0.1.0/pack.json\nF\t${digest(stateBytes)}\t.praxity/toolkit/0.1.0/state.json\n`);
+  replaceInstalled(setup, '0.1.0', 'pack.json', bytes);
 }
 function launchedPack(setup) {
   const result = shell(`${quote(posix(join(setup.home, '.praxity/bin/praxity')))} version`, { env: setup.env });
@@ -109,13 +102,16 @@ test('a candidate whose name is already installed is refused', t => {
 
 for (const [damage, change, message] of [
   ['a changed file', folder => appendFileSync(join(folder, 'launcher.sh'), '# edited\n'), /damaged or owned file changed/],
-  ['a missing pack.json', folder => rmSync(join(folder, 'pack.json')), /Installed file damaged: pack\.json/],
+  ['a missing pack.json', folder => rmSync(join(folder, 'pack.json')), /0\.1\.0 holds early release candidate 0\.1\.0-rc\.1, and it is damaged\. Installed file damaged: pack\.json\. Every install stops here until you move it aside\. Follow the backup steps under Recovery/],
   ['a user-added file', folder => writeFileSync(join(folder, 'notes.txt'), 'mine'), /unowned path preserved/],
 ]) test(`a candidate with ${damage} is refused, not moved`, t => {
   const setup = installation(t, { tool: false });
   installCandidate(setup, candidate('rc.2'));
   change(join(setup.toolkit, '0.1.0'));
-  refused(setup, setup.install(), message);
+  const result = setup.install();
+  refused(setup, result, message);
+  // The install journal refuses the other two damages before the candidate check.
+  if (damage === 'a missing pack.json') assert.doesNotMatch(result.stderr, /Roll back|\n\s+at /);
   assert.equal(existsSync(join(setup.toolkit, '0.1.0-rc.1')), false);
   assert.equal(pointers(setup), '0.1.0\n\n');
 });
@@ -126,7 +122,9 @@ test('a candidate in use is refused until its processes stop', { skip: process.p
   installCandidate(setup, candidate('rc.2'));
   const running = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)', join(setup.toolkit, '0.1.0/src/cli.mjs')], { stdio: 'ignore' });
   t.after(() => running.kill('SIGKILL'));
-  refused(setup, setup.install(), /Pack 0\.1\.0 is in use\. Close Studio and other praxity commands, then rerun\./);
+  const result = setup.install();
+  refused(setup, result, /Pack 0\.1\.0 is in use by these processes:\n.*\nClose Studio and stop the other processes listed, then rerun\./);
+  assert.match(result.stderr, new RegExp(`^ *${running.pid} .*/0\\.1\\.0/src/cli\\.mjs$`, 'm'));
   assert.equal(existsSync(join(setup.toolkit, '0.1.0-rc.1')), false);
   assert.equal(pointers(setup), '0.1.0\n\n');
   running.kill('SIGKILL'); await once(running, 'exit');

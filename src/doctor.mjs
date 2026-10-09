@@ -108,8 +108,11 @@ export function doctor(context, run = probeProcess) {
     });
     const generated = buildAdapters({ source: join(context.root, 'skills'), tools: toolSkills, packVersion: context.pack.version });
     for (const [scope, base] of [['user', context.home], ['project', context.cwd]]) for (const host of Object.keys(adapters)) {
-      const { current, stale, missing, edited } = skillPresence({ base, host, outputs: generated });
       const install = `praxity skills install --host ${host} --scope ${scope}`;
+      let presence;
+      try { presence = skillPresence({ base, host, outputs: generated }); }
+      catch (error) { items.push(item(`host.${host}.${scope}`, 'failed', error.message, `Restore the record from a backup, or move it and the toolkit skills in ${adapters[host].skills} aside, then run ${install}`)); continue; }
+      const { current, stale, missing, edited } = presence;
       // Install keeps edited owned files, but recreates moved or deleted ones.
       const fix = edited.length ? `Move your edited copies of ${edited.join(', ')} out of ${adapters[host].skills}, then run ${install}` : install;
       if (!stale.length && !missing.length) items.push(item(`host.${host}.${scope}`, 'ok', `Skill files current in ${adapters[host].skills}; verify invocation in the host`));

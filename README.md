@@ -157,8 +157,11 @@ Release candidates 1 and 2 labelled themselves 0.1.0 and installed to
 either candidate by its manifest's SHA-256, checks its files, and moves it to
 `~/.praxity/toolkit/0.1.0-rc.1`. The version pointers follow it, so rollback
 still reaches it. While Studio or another praxity command runs from that
-folder, the installer refuses and asks you to close it first. Any other
-manifest in that folder is refused as before.
+folder, the installer refuses and lists those processes. Any other manifest in
+that folder is refused as before. Every install checks for a candidate first,
+so a damaged one blocks installing any version. Rollback can't help, because
+the candidate is the pack it returns to. Move it aside with the backup steps
+under Recovery, then rerun.
 
 Updates retain the previous version. Both version pointers change in one atomic
 rename. Rollback checks the destination pack and keeps the outgoing pack, even
@@ -201,13 +204,19 @@ Ownership and recovery intents live in `.praxity/toolkit-skills.json`. Existing
 single-host records migrate automatically. The former owned Claude plugin moves
 to plain skills, and its unchanged files are removed. Modified or unowned files
 are preserved and stop migration or removal. Install recreates owned files you
-deleted or moved away. Stop active host sessions before
+deleted or moved away, and so does the next pack install, because it refreshes
+skills. To stop using the toolkit's skills for a host, run
+`praxity skills uninstall` with that `--host`; it tolerates files you already
+deleted. Stop active host sessions before
 migrating the plugin, then start a new session without its old `--plugin-dir`.
 The generator emits only the two current layouts into a fresh output directory.
 
 Installing a new pack runs `praxity skills refresh --scope user`. It regenerates
 only the adapters recorded in `~/.praxity/toolkit-skills.json`, so new tool
-skills appear and unowned skills stay as they are. Refresh project-scope
+skills appear and unowned skills stay as they are. A record from an early
+release candidate's `t3` or `codex` adapter moves to the current format on
+refresh. One for the former Claude plugin waits for `praxity skills install`,
+since it needs host sessions stopped. Refresh project-scope
 adapters yourself with `praxity skills refresh --scope project` in the project.
 
 Remove one adapter with `praxity skills uninstall --host claude --scope user`

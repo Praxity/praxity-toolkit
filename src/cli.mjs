@@ -39,7 +39,9 @@ export async function runCli(args, context, dependencies = {}) {
   }
   if (command === 'rollback') {
     if (rest.length) throw new Error('Usage: praxity rollback');
-    const result = (dependencies.rollback ?? probeProcess)({ command: 'sh', args: [join(context.root, 'install.sh'), 'rollback'], env: context.env }, { stdio: 'inherit', timeout: 30_000 });
+    // No timeout: a loaded Mac took 42 s, and killing the installer midway
+    // leaves recovery to the next run.
+    const result = (dependencies.rollback ?? probeProcess)({ command: 'sh', args: [join(context.root, 'install.sh'), 'rollback'], env: context.env }, { stdio: 'inherit', timeout: undefined });
     if (result.error) throw new Error(result.error);
     return result.code ?? 1;
   }
