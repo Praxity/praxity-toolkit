@@ -19,6 +19,16 @@ test('real pack validates and every published archive has a complete contract', 
     }
   }
 });
+
+test('real pack pins every published tool archive to its toolkit release', () => {
+  const pack = realPack();
+  const prefix = `https://github.com/Praxity/praxity-toolkit/releases/download/v${pack.version}/`;
+  for (const tool of pack.tools) {
+    for (const archive of Object.values(tool.archives)) {
+      if (archive.status === 'published') assert.ok(archive.url.startsWith(prefix), tool.id);
+    }
+  }
+});
 test('unpublished fixture tools are omitted from the installation plan', () => {
   const pack = examplePack();
   assert.deepEqual(validateManifest(pack), []);

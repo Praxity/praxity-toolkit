@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "0.1.0-rc.3",
+  "version": "0.1.0",
   "platforms": [
     "darwin-arm64"
   ],
@@ -93,7 +93,7 @@
   "tools": [
     {
       "id": "studio",
-      "version": "0.3.0-main.c18b1d2f",
+      "version": "0.3.0-main.b32878e7",
       "entry": "praxity.mjs",
       "runner": "node",
       "license": "PolyForm Perimeter 1.0.1",
@@ -102,14 +102,17 @@
       "archives": {
         "darwin-arm64": {
           "status": "published",
-          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0-rc.3/praxity-studio-cli-0.3.0-main.c18b1d2f-darwin-arm64.tar.gz",
-          "sha256": "78cf710f430f9578a39084eb61104b0fc59b3450c8422967db2dc26045236836",
+          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0/praxity-studio-cli-0.3.0-main.b32878e7-darwin-arm64.tar.gz",
+          "sha256": "b04a48444f0f8b96556838d6cd39727f5c0e1b019228f6dcde5632b598035c9a",
           "format": "tar.gz",
           "stripComponents": 1
         },
         "darwin-x64": {
-          "status": "unpublished",
-          "reason": "Studio CLI candidates are built for macOS on the self-hosted Mac; only darwin-arm64 is in the trial."
+          "status": "published",
+          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0/praxity-studio-cli-0.3.0-main.b32878e7-darwin-x64.tar.gz",
+          "sha256": "b8cf9a96eeb27c397089a888b52392647a4355b5a3a686e808d9e00283c5a066",
+          "format": "tar.gz",
+          "stripComponents": 1
         },
         "linux-x64": {
           "status": "unpublished",
@@ -139,7 +142,7 @@
       "archives": {
         "darwin-arm64": {
           "status": "published",
-          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0-rc.1/praxity-check-0.6.0-portable.tar.gz",
+          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0/praxity-check-0.6.0-portable.tar.gz",
           "sha256": "9b878ef21facbd99dc41b465a8be6da8193ae1fe7725b23a94f25db22200d502",
           "format": "tar.gz",
           "stripComponents": 1
@@ -169,7 +172,7 @@
       "archives": {
         "darwin-arm64": {
           "status": "published",
-          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0-rc.1/praxity-trace-0.1.1-darwin-arm64.tar.gz",
+          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0/praxity-trace-0.1.1-darwin-arm64.tar.gz",
           "sha256": "52bc5aa82d29892e5570fdb88ec65bd29c728b29b890c9b7aba49bf3f48c5dbb",
           "format": "tar.gz",
           "stripComponents": 1
@@ -199,7 +202,7 @@
       "archives": {
         "darwin-arm64": {
           "status": "published",
-          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0-rc.1/praxity-print-0.1.0-darwin-arm64.tar.gz",
+          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0/praxity-print-0.1.0-darwin-arm64.tar.gz",
           "sha256": "221b3bcee019a80500a2fa7560a2aeb0fbf24dc99757254568f02b5ce34f685e",
           "format": "tar.gz",
           "stripComponents": 1
@@ -229,7 +232,7 @@
       "archives": {
         "darwin-arm64": {
           "status": "published",
-          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0-rc.2/praxity-import-0.1.0.tar.gz",
+          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0/praxity-import-0.1.0.tar.gz",
           "sha256": "3f2483bd4ad25034ac445562e9170d7d0d1c635fd30dc661cc5ece1d5641576f",
           "format": "tar.gz",
           "stripComponents": 1

@@ -14,8 +14,11 @@ T3 course actions and skills for T3, Claude Code and Codex CLI. There is no SDK
 or MCP server. `pack.json` pins every archive by URL and SHA-256.
 
 Studio reads grammar 4 courses; convert grammar 3 courses first.
-Only Apple Silicon macOS has archives and an installer. The other platforms in
-`pack.json` are placeholders.
+Pack 0.1.0 pins Studio CLI `0.3.0-main.b32878e7`. All five Apple Silicon
+tool archives download from the `v0.1.0` toolkit release after publication.
+Only Apple Silicon macOS has a complete pack and installer. Studio also has
+an Intel Mac archive; the full Intel pack and installer are still pending.
+Other unpublished platform entries in `pack.json` are placeholders.
 
 Praxity's tools execute locally. The chosen host and model provider control
 telemetry and what they transmit. An editor capability URL can enter the host's
@@ -310,9 +313,10 @@ paths are relative to the extracted root. The manifest selects Node-script or
 executable launchers. Tar archives must not escape their artifact root.
 Keep licences, Required Notices, dependencies and inventories in the payload.
 
-All five tool archives are published for darwin-arm64 as assets of this
-repository's releases, each with its SHA-256 in `pack.json`. Their other
-platform entries stay `unpublished`, with the reason recorded beside each.
+All five darwin-arm64 tool archives and Studio's darwin-x64 archive are staged
+as assets of this repository's `v0.1.0` release, each with its SHA-256 in
+`pack.json`. Download URLs become available when that release is published.
+Other platform entries stay `unpublished`, with the reason recorded beside each.
 
 Node 24.21.0 hashes came from its [signed official checksum list](https://nodejs.org/dist/v24.21.0/SHASUMS256.txt.asc),
 verified with release key `5BE8A3F6C8A5C01D106C0AD820B1A390B168D356` listed in
