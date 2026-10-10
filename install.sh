@@ -161,9 +161,16 @@ command -v tar >/dev/null 2>&1 || die 'Install needs tar'
 command -v mktemp >/dev/null 2>&1 || die 'Install needs mktemp'
 if [ -z "$PLATFORM" ]; then
   OS=$(uname -s); CPU=$(uname -m)
-  case "$OS:$CPU" in Darwin:arm64) PLATFORM=darwin-arm64 ;; *) die "Unsupported platform: $OS $CPU. Only Apple Silicon macOS is implemented." ;; esac
+  case "$OS:$CPU" in
+    Darwin:arm64) PLATFORM=darwin-arm64 ;;
+    Darwin:x86_64)
+      # A translated shell reports x86_64 on Apple Silicon. Use native runtimes.
+      if [ "$(sysctl -in sysctl.proc_translated 2>/dev/null || true)" = 1 ]; then PLATFORM=darwin-arm64;
+      else PLATFORM=darwin-x64; fi ;;
+    *) die "Unsupported platform: $OS $CPU. Only Apple Silicon and Intel macOS are implemented." ;;
+  esac
 fi
-[ "$PLATFORM" = darwin-arm64 ] || die "Platform not implemented: $PLATFORM"
+case "$PLATFORM" in darwin-arm64|darwin-x64) ;; *) die "Platform not implemented: $PLATFORM" ;; esac
 MANIFEST_FILE=$(new_temp)
 BOOTSTRAP_TSV=$(new_temp)
 if [ -z "$MANIFEST" ]; then capture "$MANIFEST_FILE" cat "$SCRIPT_DIR/pack.json";

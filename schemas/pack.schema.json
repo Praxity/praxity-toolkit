@@ -48,6 +48,7 @@
     },
     "tools": {
       "type": "array",
+      "minItems": 5,
       "items": {
         "$ref": "#/$defs/tool"
       }

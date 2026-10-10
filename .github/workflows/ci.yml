@@ -18,8 +18,17 @@ jobs:
           node-version: 24.21.0
       - run: npm run validate
       - run: node --test
+      - run: npm run validate:release
   macos-install:
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            platform: darwin-arm64
+          - runner: macos-15-intel
+            platform: darwin-x64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -38,5 +47,6 @@ jobs:
           sh install.sh
           "$HOME/.praxity/bin/praxity" version
           "$HOME/.praxity/bin/praxity" doctor --json
+          node -e 'const state = require(process.env.HOME + "/.praxity/toolkit/" + require("./pack.json").version + "/state.json"); require("node:assert/strict").equal(state.platform, process.argv[1])' '${{ matrix.platform }}'
           sh install.sh
           sh install.sh uninstall

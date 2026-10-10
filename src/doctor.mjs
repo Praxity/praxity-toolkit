@@ -8,7 +8,7 @@ import { loadSchema, validateSchema } from './schema.mjs';
 const item = (id, status, message, fix = '') => ({ id, status, message, fix });
 
 export function doctor(context, run = probeProcess) {
-  const items = [];
+  const items = [item('platform', 'ok', context.state.platform)];
   const work = mkdtempSync(join(tmpdir(), 'praxity-doctor-'));
   const reinstall = `sh ${quotePosix(join(context.root, 'install.sh'))}`;
   const success = result => result.code === 0 && !result.error;

@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { examplePack, realPack, repository } from './helpers.mjs';
-import { validateManifest, installationPlan } from '../src/manifest.mjs';
+import { validateManifest, validateReleaseManifest, installationPlan } from '../src/manifest.mjs';
 import { loadSchema, validateSchema } from '../src/schema.mjs';
 
 test('real pack validates and every published archive has a complete contract', () => {
   const pack = realPack();
   assert.deepEqual(validateSchema(pack, loadSchema('pack')), []);
   assert.deepEqual(validateManifest(pack), []);
+  assert.deepEqual(validateReleaseManifest(pack), []);
   for (const artifact of [...Object.values(pack.runtimes), ...pack.tools]) {
     for (const [platform, archive] of Object.entries(artifact.archives)) {
       if (archive.status !== 'published') continue;
@@ -34,6 +35,52 @@ test('unpublished fixture tools are omitted from the installation plan', () => {
   assert.deepEqual(validateManifest(pack), []);
   assert.deepEqual(installationPlan(pack, 'darwin-arm64').map(item => item.id), ['node', 'typst']);
   assert.throws(() => installationPlan(pack, 'linux-x64'), /Unsupported platform/);
+});
+
+for (const platform of ['darwin-arm64', 'darwin-x64']) test(`installation plan selects ${platform} archives`, () => {
+  const pack = realPack();
+  const plan = installationPlan(pack, platform);
+  assert.equal(plan.find(entry => entry.id === 'node').url, `https://nodejs.org/dist/v24.21.0/node-v24.21.0-${platform}.tar.gz`);
+  assert.equal(plan.find(entry => entry.id === 'studio').url, `https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0/praxity-studio-cli-0.3.0-main.b32878e7-${platform}.tar.gz`);
+});
+
+test('every declared platform requires every tool archive', () => {
+  for (const tool of realPack().tools) {
+    const pack = realPack();
+    pack.platforms = ['darwin-arm64', 'darwin-x64'];
+    delete pack.tools.find(entry => entry.id === tool.id).archives['darwin-x64'];
+    assert.ok(validateManifest(pack).some(error => error.includes(`${tool.id}/archives/darwin-x64: required`)));
+  }
+});
+
+test('portable tools reuse their archives on both macOS architectures', () => {
+  const pack = realPack();
+  for (const id of ['check', 'trace', 'print', 'import']) {
+    const tool = pack.tools.find(tool => tool.id === id);
+    assert.equal(tool.archives['darwin-x64'].status, 'published');
+    assert.deepEqual(tool.archives['darwin-x64'], tool.archives['darwin-arm64'], id);
+  }
+});
+
+test('manifest cannot omit a tool from the pack', () => {
+  const pack = realPack();
+  pack.tools.pop();
+  assert.ok(validateManifest(pack).length);
+});
+
+test('release validation refuses unpublished tool placeholders on a supported platform', () => {
+  const pack = examplePack();
+  pack.platforms = ['darwin-arm64'];
+  assert.deepEqual(validateManifest(pack), []);
+  assert.ok(validateReleaseManifest(pack).some(error => error.includes('unpublished')));
+  for (const tool of pack.tools) for (const platform of pack.platforms) {
+    tool.archives[platform] = { ...pack.runtimes.node.archives[platform] };
+  }
+  assert.deepEqual(validateReleaseManifest(pack), []);
+  // Unpublished platforms outside the release remain allowed.
+  delete pack.tools[0].archives['darwin-x64'];
+  pack.platforms.push('darwin-x64');
+  assert.ok(validateReleaseManifest(pack).length);
 });
 test('published archive has a complete executable contract', () => {
   const pack = examplePack();

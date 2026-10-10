@@ -1,7 +1,7 @@
 # Praxity toolkit
 
 Install Praxity's local tools for learning designers in your home folder.
-On an Apple Silicon Mac, one install gives you five working tools:
+On an Apple Silicon or Intel Mac, one install gives you five working tools:
 
 - Studio edits a course in the browser or in T3's preview, and exports it as HTML or PDF.
 - Check audits an exported course, including for accessibility.
@@ -14,11 +14,15 @@ T3 course actions and skills for T3, Claude Code and Codex CLI. There is no SDK
 or MCP server. `pack.json` pins every archive by URL and SHA-256.
 
 Studio reads grammar 4 courses; convert grammar 3 courses first.
-Pack 0.1.0 pins Studio CLI `0.3.0-main.b32878e7`. All five Apple Silicon
+Pack 0.1.0 pins Studio CLI `0.3.0-main.b32878e7`. All five macOS
 tool archives download from the `v0.1.0` toolkit release after publication.
-Only Apple Silicon macOS has a complete pack and installer. Studio also has
-an Intel Mac archive; the full Intel pack and installer are still pending.
+The installer supports Apple Silicon and Intel macOS and chooses native arm64
+runtimes when launched through Rosetta. Studio has an archive for each
+architecture. Check, Trace, Print and Import share portable archives across both.
 Other unpublished platform entries in `pack.json` are placeholders.
+Before publishing, run `npm run validate:release`. It refuses unpublished tools
+on every platform in `platforms`; regular validation still permits staged packs.
+CI installs on GitHub-hosted `macos-15` and `macos-15-intel` runners.
 
 Praxity's tools execute locally. The chosen host and model provider control
 telemetry and what they transmit. An editor capability URL can enter the host's
@@ -26,7 +30,7 @@ tool transcript.
 
 ## Try it
 
-On an Apple Silicon Mac, one command downloads the toolkit, installs the pack, runs
+On an Apple Silicon or Intel Mac, one command downloads the toolkit, installs the pack, runs
 the doctor and opens Studio's editor in Safari on a copy of the sample course:
 
 ```sh
@@ -39,7 +43,7 @@ Read [`try.sh`](try.sh) first if you prefer; it touches only `~/praxity-toolkit-
 ## Install
 
 Download this repository, review `install.sh` and `pack.json`, then run the
-installer from that folder on an Apple Silicon Mac:
+installer from that folder on an Apple Silicon or Intel Mac:
 
 ```sh
 curl -fsSL https://github.com/Praxity/praxity-toolkit/archive/refs/heads/main.tar.gz | tar xz
@@ -316,7 +320,10 @@ Keep licences, Required Notices, dependencies and inventories in the payload.
 All five darwin-arm64 tool archives and Studio's darwin-x64 archive are staged
 as assets of this repository's `v0.1.0` release, each with its SHA-256 in
 `pack.json`. Download URLs become available when that release is published.
-Other platform entries stay `unpublished`, with the reason recorded beside each.
+Check, Trace, Print and Import reuse the same archives for Intel macOS. The
+Trace and Print asset names retain `darwin-arm64` for compatibility; their
+payload inventories declare them portable. Other platform entries stay
+`unpublished`, with the reason recorded beside each.
 
 Node 24.21.0 hashes came from its [signed official checksum list](https://nodejs.org/dist/v24.21.0/SHASUMS256.txt.asc),
 verified with release key `5BE8A3F6C8A5C01D106C0AD820B1A390B168D356` listed in
@@ -333,7 +340,7 @@ each archive. Installing or adapting a tool does not relicense it.
 ## Paste into your agent
 
 > Use the reviewed Praxity toolkit checkout to install its pinned manifest on
-> this Apple Silicon Mac. Read its install-praxity skill first. Show the concrete
+> this Apple Silicon or Intel Mac. Read its install-praxity skill first. Show the concrete
 > downloads, licences and unpublished blockers and obtain consent. Run only its
 > reviewed bootstrap. Keep tool setup consent prompts visible, run doctor, and
 > install the adapter for my host and scope. Preserve my shell and AGENTS files.

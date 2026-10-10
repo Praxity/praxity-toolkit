@@ -24,6 +24,15 @@ export function readManifest(file) {
   return pack;
 }
 
+export function validateReleaseManifest(pack) {
+  const errors = validateManifest(pack);
+  if (errors.length) return errors;
+  for (const tool of pack.tools) for (const platform of pack.platforms) {
+    if (tool.archives[platform].status !== 'published') errors.push(`$/tools/${tool.id}/archives/${platform}: unpublished release placeholder`);
+  }
+  return errors;
+}
+
 export function installationPlan(pack, platform) {
   if (!pack.platforms.includes(platform)) throw new Error(`Unsupported platform ${platform}`);
   const entries = Object.entries(pack.runtimes).map(([id, runtime]) => ({
