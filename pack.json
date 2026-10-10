@@ -94,7 +94,7 @@
   "tools": [
     {
       "id": "studio",
-      "version": "0.3.0-main.b32878e7",
+      "version": "0.3.0-main.b4962141",
       "entry": "praxity.mjs",
       "runner": "node",
       "license": "PolyForm Perimeter 1.0.1",
@@ -103,15 +103,15 @@
       "archives": {
         "darwin-arm64": {
           "status": "published",
-          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0/praxity-studio-cli-0.3.0-main.b32878e7-darwin-arm64.tar.gz",
-          "sha256": "b04a48444f0f8b96556838d6cd39727f5c0e1b019228f6dcde5632b598035c9a",
+          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0/praxity-studio-cli-0.3.0-main.b4962141-darwin-arm64.tar.gz",
+          "sha256": "cc3ef0b5c826928dcdcbd4453e85740eed8faf35a26d078b33d023b2d285fa31",
           "format": "tar.gz",
           "stripComponents": 1
         },
         "darwin-x64": {
           "status": "published",
-          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0/praxity-studio-cli-0.3.0-main.b32878e7-darwin-x64.tar.gz",
-          "sha256": "b8cf9a96eeb27c397089a888b52392647a4355b5a3a686e808d9e00283c5a066",
+          "url": "https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0/praxity-studio-cli-0.3.0-main.b4962141-darwin-x64.tar.gz",
+          "sha256": "54bce291b733710f506f23eb42ce9562afd1fa549544dea779ff1ee17de88393",
           "format": "tar.gz",
           "stripComponents": 1
         },
