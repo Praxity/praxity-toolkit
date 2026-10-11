@@ -37,9 +37,10 @@ test('an upgrade refreshes changed tool skills for both recorded adapters', t =>
     passed(shell(`${quote(posix(join(setup.home, '.praxity/bin/praxity')))} skills install --host ${host} --scope user`, { env: setup.env }));
   }
   const payload = join(setup.root, 'fake studio');
+  const tool = setup.pack.tools.find(tool => tool.id === 'studio');
   const updated = '---\nname: prax-format\ndescription: Write a course.\n---\nUpdated tool-owned skill.\n';
-  writeFileSync(join(payload, 'skill/SKILL.md'), updated);
-  setup.pack.tools.find(tool => tool.id === 'studio').archives['darwin-arm64'] = archive(payload, join(setup.root, 'studio upgrade.tar.gz'));
+  writeFileSync(join(payload, tool.skillPath, 'SKILL.md'), updated);
+  tool.archives['darwin-arm64'] = archive(payload, join(setup.root, 'studio upgrade.tar.gz'));
   setup.pack.version = '0.2.0'; setup.save();
   passed(setup.install());
   for (const folder of ['.claude/skills', '.agents/skills']) {
