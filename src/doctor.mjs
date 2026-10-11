@@ -116,8 +116,7 @@ export function doctor(context, run = probeProcess) {
       // Install keeps edited owned files, but recreates moved or deleted ones.
       const fix = edited.length ? `Move your edited copies of ${edited.join(', ')} out of ${adapters[host].skills}, then run ${install}` : install;
       if (!stale.length && !missing.length) items.push(item(`host.${host}.${scope}`, 'ok', `Skill files current in ${adapters[host].skills}; verify invocation in the host`));
-      else if (!current.length && !stale.length) items.push(item(`host.${host}.${scope}`, 'not-installed', 'Generated adapter is absent', fix));
-      else items.push(item(`host.${host}.${scope}`, 'partial', [missing.length && `Missing skills: ${missing.join(', ')}.`, stale.length && `Changed or out-of-date skills: ${stale.join(', ')}.`].filter(Boolean).join(' '), fix));
+      else items.push(item(`host.${host}.${scope}`, !current.length && !stale.length ? 'not-installed' : 'partial', [missing.length && `Missing skills: ${missing.join(', ')}.`, stale.length && `Changed or out-of-date skills: ${stale.join(', ')}.`].filter(Boolean).join(' '), fix));
     }
     // T3 actions call the launcher by its full path, so a missing PATH entry
     // only affects typed commands. The doctor names the line; it never edits it.
