@@ -109,8 +109,11 @@ T3 keeps a saved copy of imported actions. After init changes those actions,
 delete each stale saved Praxity action in T3's project Actions settings and import
 it again from `t3.json`, or edit its saved command to match `t3.json`.
 `praxity doctor` warns per project when saved Praxity actions differ from that
-project's file. It reads `~/.t3/userdata/settings.json` and the project mapping
-in `statev2.sqlite` read-only; missing or unreadable T3 files are skipped.
+project's file. Optional settings and project JSON reads are limited to 4 MiB
+each. It queries the project mapping from a private copy of `statev2.sqlite`
+and its committed WAL, with a 128 MiB limit per snapshot file. It never opens
+the live database with SQLite. Missing, unreadable, oversize or changing T3
+files and mappings with a rollback journal are skipped.
 Generated actions use relative paths and a loopback `/launch` URL, with no tokens
 or machine paths. They call the launcher as `"$HOME/.praxity/bin/praxity"`,
 which the shell expands on each machine, because T3 runs actions in a login

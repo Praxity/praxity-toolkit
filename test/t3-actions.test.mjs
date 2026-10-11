@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, writeFileSync, writeSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { runCli } from '../src/cli.mjs';
@@ -13,6 +15,7 @@ const quiet = { print() {} };
 const t3Items = result => result.items.filter(item => item.id.startsWith('t3.actions.'));
 const probe = context => () => ({ code: 0, stdout: `v${context.pack.runtimes.node.version}`, stderr: '' });
 const report = context => doctor(context, probe(context));
+const directoryBytes = directory => readdirSync(directory).sort().map(name => [name, readFileSync(join(directory, name)), statSync(join(directory, name)).mtimeMs]);
 
 function settings(context, name) {
   const folder = join(context.home, '.t3/userdata');
@@ -103,6 +106,135 @@ for (const state of ['missing', 'unreadable', 'invalid JSON', 'invalid shape']) 
     assert.deepEqual(t3Items(report(context)), []);
     assert.equal(report(context).exitCode, 0);
     if (state === 'missing') assert.equal(existsSync(folder), false);
+  });
+}
+
+for (const input of ['settings', 'project']) {
+  test(`doctor stays usable with a 72 MiB optional ${input} file under a bounded heap`, async t => {
+    const { context } = fixture(t);
+    const paths = await projects(context, ['legacy']);
+    const settingsFile = settings(context, 'legacy');
+    const file = input === 'settings' ? settingsFile : join(paths.get('legacy'), 't3.json');
+    const fd = openSync(file, 'w');
+    try {
+      writeSync(fd, '{"padding":"');
+      const chunk = 'x'.repeat(1024 * 1024);
+      for (let i = 0; i < 72; i++) writeSync(fd, chunk);
+      writeSync(fd, '"}');
+    } finally { closeSync(fd); }
+    const before = statSync(file).mtimeMs;
+    const child = spawnSync(process.execPath, ['--max-old-space-size=64', '--input-type=module', '-e', `
+      import { doctor } from ${JSON.stringify(new URL('../src/doctor.mjs', import.meta.url).href)};
+      const context = ${JSON.stringify({ ...context, env: {} })};
+      const result = doctor(context, () => ({ code: 0, stdout: 'v' + context.pack.runtimes.node.version, stderr: '' }));
+      console.log(JSON.stringify({ exitCode: result.exitCode, platform: result.items.find(item => item.id === 'platform'), warnings: result.items.filter(item => item.id.startsWith('t3.actions.')) }));
+    `], { encoding: 'utf8', timeout: 15_000 });
+    assert.equal(child.status, 0, child.stderr);
+    const result = JSON.parse(child.stdout);
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.platform.status, 'ok');
+    assert.deepEqual(result.warnings, []);
+    assert.equal(statSync(file).mtimeMs, before);
+  });
+}
+
+test('doctor accepts a 4 MiB settings file and quietly skips one byte more', async t => {
+  const { context } = fixture(t);
+  await projects(context, ['legacy']);
+  const file = settings(context, 'legacy');
+  const suffix = ',"padding":"';
+  const base = readFileSync(file, 'utf8').trim().slice(0, -1) + suffix;
+  const bytes = base + 'x'.repeat(4 * 1024 * 1024 - base.length - 2) + '"}';
+  writeFileSync(file, bytes);
+  assert.equal(t3Items(report(context)).length, 1);
+  writeFileSync(file, bytes + '\n');
+  assert.deepEqual(t3Items(report(context)), []);
+  assert.equal(report(context).exitCode, 0);
+});
+
+test('doctor skips a mapping with a rollback journal without changing its directory', async t => {
+  const { context } = fixture(t);
+  settings(context, 'legacy');
+  await projects(context, ['legacy']);
+  const directory = join(context.home, '.t3/userdata');
+  writeFileSync(join(directory, 'statev2.sqlite-journal'), 'in-progress journal');
+  const before = directoryBytes(directory);
+  assert.deepEqual(t3Items(report(context)), []);
+  assert.equal(report(context).exitCode, 0);
+  assert.deepEqual(directoryBytes(directory), before);
+});
+
+for (const open of [false, true]) {
+  test(`doctor leaves the whole live WAL directory unchanged with T3 ${open ? 'open' : 'closed'}`, { timeout: 15_000 }, async t => {
+    let writer;
+    t.after(async () => {
+      if (writer && writer.exitCode === null && writer.signalCode === null) {
+        const closed = once(writer, 'close');
+        writer.kill();
+        await closed;
+      }
+    });
+    const { context } = fixture(t);
+    settings(context, 'legacy');
+    await projects(context, ['legacy']);
+    const directory = join(context.home, '.t3/userdata');
+    const database = join(directory, 'statev2.sqlite');
+    if (open) {
+      writer = spawn(process.execPath, ['--input-type=module', '-e', `
+        import { DatabaseSync } from 'node:sqlite';
+        const db = new DatabaseSync(${JSON.stringify(database)});
+        db.exec('PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0');
+        const update = db.prepare('UPDATE projection_projects SET title=?');
+        update.run('Committed WAL title');
+        process.on('message', message => {
+          if (message === 'next') update.run('Next committed WAL title');
+          else if (message === 'uncommitted') { db.exec('BEGIN IMMEDIATE'); update.run('Uncommitted title'); }
+          else { db.close(); process.disconnect(); return; }
+          process.send('ready');
+        });
+        process.send('ready');
+      `], { stdio: ['ignore', 'ignore', 'inherit', 'ipc'] });
+      await once(writer, 'message');
+    } else {
+      const db = new DatabaseSync(database);
+      db.exec('PRAGMA journal_mode=WAL');
+      db.prepare('UPDATE projection_projects SET title=?').run('Committed WAL title');
+      db.close();
+    }
+    try {
+      const before = directoryBytes(directory);
+      if (open) assert.ok(before.some(([name]) => name.endsWith('-wal')));
+      else assert.ok(!before.some(([name]) => name.endsWith('-wal') || name.endsWith('-shm')));
+      const warnings = t3Items(report(context));
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0].message, /Committed WAL title/);
+      assert.deepEqual(directoryBytes(directory), before);
+      if (open) {
+        const next = once(writer, 'message');
+        writer.send('next');
+        await next;
+        const updated = directoryBytes(directory);
+        assert.match(t3Items(report(context))[0].message, /Next committed WAL title/);
+        assert.deepEqual(directoryBytes(directory), updated);
+        // Windows locks SHM bytes during a write transaction. The committed
+        // open-connection cases above compare every file on all platforms.
+        if (process.platform !== 'win32') {
+          const pending = once(writer, 'message');
+          writer.send('uncommitted');
+          await pending;
+          const uncommitted = directoryBytes(directory);
+          assert.match(t3Items(report(context))[0].message, /Next committed WAL title/);
+          assert.deepEqual(directoryBytes(directory), uncommitted);
+        }
+      }
+    } finally {
+      if (open) {
+        const closed = once(writer, 'close');
+        writer.send('close');
+        await closed;
+        assert.equal(writer.exitCode, 0);
+      }
+    }
   });
 }
 

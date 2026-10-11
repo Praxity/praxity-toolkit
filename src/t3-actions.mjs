@@ -1,8 +1,11 @@
-import { readFileSync } from 'node:fs';
+import { closeSync, copyFileSync, mkdtempSync, openSync, readSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 const launcher = '"$HOME/.praxity/bin/praxity"';
+const maxJsonBytes = 4 * 1024 * 1024;
+const maxSnapshotFileBytes = 128n * 1024n * 1024n;
 
 export const t3ActionsRepairNote = "T3 keeps a saved copy of imported actions. In T3's project Actions settings, delete each stale saved Praxity action and import it again from t3.json, or edit its saved command to match t3.json.";
 
@@ -25,8 +28,21 @@ const validAction = action => record(action) && typeof action.name === 'string' 
 function optionalJson(file) {
   // T3 is optional. Missing, unreadable or malformed host files are not a
   // toolkit failure, and none of these diagnostics repair host storage.
-  try { return JSON.parse(readFileSync(file, 'utf8')); }
+  let fd;
+  try {
+    fd = openSync(file, 'r');
+    const buffer = Buffer.allocUnsafe(maxJsonBytes + 1);
+    let length = 0;
+    while (length < buffer.length) {
+      const read = readSync(fd, buffer, length, buffer.length - length, null);
+      if (!read) break;
+      length += read;
+    }
+    if (length > maxJsonBytes) return undefined;
+    return JSON.parse(buffer.subarray(0, length).toString('utf8'));
+  }
   catch { return undefined; }
+  finally { if (fd !== undefined) closeSync(fd); }
 }
 
 function savedActions(settings) {
@@ -40,15 +56,34 @@ function savedActions(settings) {
   return saved;
 }
 
-function projectFolders(directory) {
-  let db;
+function fileVersion(file) {
   try {
-    // Settings key projects by opaque IDs. Only this projection maps them to
-    // their files; readOnly also prevents creating a missing database.
-    db = new DatabaseSync(join(directory, 'statev2.sqlite'), { readOnly: true });
+    const stat = statSync(file, { bigint: true });
+    if (!stat.isFile() || stat.size > maxSnapshotFileBytes) throw new Error('Optional T3 mapping is not a bounded regular file');
+    return [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(':');
+  } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+}
+
+function projectFolders(directory) {
+  let db, snapshot;
+  try {
+    const source = join(directory, 'statev2.sqlite');
+    const files = [source, `${source}-wal`, `${source}-journal`];
+    const before = files.map(fileVersion);
+    if (!before[0] || before[2]) return [];
+    snapshot = mkdtempSync(join(tmpdir(), 'praxity-t3-'));
+    const copy = join(snapshot, 'statev2.sqlite');
+    copyFileSync(source, copy);
+    if (before[1]) copyFileSync(`${source}-wal`, `${copy}-wal`);
+    // No live SQLite connection or locks. Reject observed writes, replacements,
+    // WAL resets and journal changes during the copy instead of mixing versions.
+    if (files.some((file, index) => fileVersion(file) !== before[index])) return [];
+    // SQLite rebuilds its private WAL index and reads committed frames only.
+    db = new DatabaseSync(copy, { readOnly: true });
+    if (Object.values(db.prepare('PRAGMA quick_check').get())[0] !== 'ok') return [];
     return db.prepare('SELECT project_id AS id, title, workspace_root AS folder FROM projection_projects WHERE deleted_at IS NULL').all();
   } catch { return []; }
-  finally { db?.close(); }
+  finally { db?.close(); if (snapshot) rmSync(snapshot, { recursive: true, force: true }); }
 }
 
 function actionFields(action) {
