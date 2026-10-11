@@ -82,8 +82,9 @@ export async function executeTool(context, tool, args) {
   // stops on its first signal and dies on a second. Ctrl+Z suspends only the
   // launcher; the tool keeps running. Setup keeps the terminal for its consent
   // prompts, so the terminal's signals already reach it. Windows has neither.
+  // Windows Studio needs a separate hidden console for launcher death to deliver IPC EOF.
   const child = spawn(invocation.command, invocation.args, { env: invocation.env,
-    detached: !setup && process.platform !== 'win32', stdio });
+    detached: !setup && (process.platform !== 'win32' || tool.id === 'studio'), windowsHide: true, stdio });
   let output = '';
   if (setup) child.stdout.on('data', bytes => {
     process.stdout.write(bytes);
