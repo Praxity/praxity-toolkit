@@ -434,6 +434,18 @@ for (const phase of ['stage', 'remove']) test(`interrupted adapter addition reco
   assert.equal(existsSync(join(context.home, '.praxity/toolkit-skills.lock')), false);
 });
 
+test('doctor names every missing skill and its install command even when no adapter is installed', t => {
+  const { context } = fixture(t);
+  const result = doctor(context, () => ({ code: 0, stdout: 'v24.21.0', stderr: '' }));
+  for (const scope of ['user', 'project']) for (const host of ['claude', 'codex']) {
+    assert.deepEqual(result.items.find(item => item.id === `host.${host}.${scope}`), {
+      id: `host.${host}.${scope}`, status: 'not-installed',
+      message: 'Missing skills: install-praxity, studio-editor.',
+      fix: `praxity skills install --host ${host} --scope ${scope}`,
+    });
+  }
+});
+
 test('doctor names skills missing after an upgrade, and refresh adds them without touching user skills', async t => {
   const { context } = fixture(t), quiet = { print: () => {} };
   await runCli(['skills', 'install', '--host', 'claude', '--scope', 'user'], context, quiet);
@@ -460,13 +472,57 @@ test('doctor reports a changed toolkit skill as partial', async t => {
   writeFileSync(join(context.cwd, '.agents/skills/studio-editor/SKILL.md'), 'Edited');
   const item = doctor(context, () => ({ code: 0, stdout: 'v24.21.0', stderr: '' })).items.find(item => item.id === 'host.codex.project');
   assert.equal(item.status, 'partial');
-  assert.equal(item.message, 'Changed or out-of-date skills: studio-editor.');
+  assert.equal(item.message, 'Changed or out-of-date skills: studio-editor. Edited skill files: studio-editor.');
   assert.equal(item.fix, 'Move your edited copies of studio-editor out of .agents/skills, then run praxity skills install --host codex --scope project');
   // Following the fix works: install recreates the moved skill.
   renameSync(join(context.cwd, '.agents/skills/studio-editor'), join(context.cwd, 'studio-editor edited'));
   await runCli(['skills', 'install', '--host', 'codex', '--scope', 'project'], context, { print: () => {} });
   assert.equal(doctor(context, () => ({ code: 0, stdout: 'v24.21.0', stderr: '' })).items.find(item => item.id === 'host.codex.project').status, 'ok');
   assert.equal(readFileSync(join(context.cwd, 'studio-editor edited/SKILL.md'), 'utf8'), 'Edited');
+});
+
+test('doctor reports an edited reference in a missing skill and its stated CLI repair preserves the edit', async t => {
+  const { context } = fixture(t), quiet = { print() {} };
+  const reference = 'studio-editor/references/user-guide.txt';
+  mkdirSync(join(context.root, 'skills/studio-editor/references'));
+  writeFileSync(join(context.root, 'skills', reference), 'Packaged guide.\n');
+  await runCli(['skills', 'install', '--host', 'claude', '--scope', 'user'], context, quiet);
+  const skill = join(context.home, '.claude/skills/studio-editor');
+  writeFileSync(join(skill, 'references/user-guide.txt'), 'My edited guide.\n');
+  unlinkSync(join(skill, 'SKILL.md'));
+  let report;
+  await runCli(['doctor', '--json'], context, { print: text => { report = JSON.parse(text); } });
+  const item = report.items.find(row => row.id === 'host.claude.user');
+  assert.equal(item.message, 'Missing skills: studio-editor. Edited skill files: studio-editor.');
+  assert.equal(item.fix, 'Move your edited copies of studio-editor out of .claude/skills, then run praxity skills install --host claude --scope user');
+  const moved = join(context.home, 'studio-editor edited');
+  renameSync(skill, moved);
+  const command = item.fix.split(', then run ')[1].split(' ');
+  assert.equal(command.shift(), 'praxity');
+  await runCli(command, context, quiet);
+  assert.equal(readFileSync(join(moved, 'references/user-guide.txt'), 'utf8'), 'My edited guide.\n');
+  assert.equal(existsSync(join(moved, 'SKILL.md')), false);
+  assert.equal(readFileSync(join(skill, 'references/user-guide.txt'), 'utf8'), 'Packaged guide.\n');
+  assert.deepEqual(readFileSync(join(skill, 'SKILL.md')), outputsFor(context).claude.get('.claude/skills/studio-editor/SKILL.md'));
+  await runCli(['doctor', '--json'], context, { print: text => { report = JSON.parse(text); } });
+  assert.equal(report.items.find(row => row.id === 'host.claude.user').status, 'ok');
+});
+
+test('doctor reports owned-file edits even when a skill matches the current pack', async t => {
+  const { context } = fixture(t), quiet = { print() {} };
+  const source = join(context.root, 'skills/studio-editor/references');
+  mkdirSync(source);
+  writeFileSync(join(source, 'guide.txt'), 'Original guide.\n');
+  await runCli(['skills', 'install', '--host', 'claude', '--scope', 'user'], context, quiet);
+  const current = 'Current guide with local edits.\n';
+  writeFileSync(join(source, 'guide.txt'), current);
+  writeFileSync(join(context.home, '.claude/skills/studio-editor/references/guide.txt'), current);
+  let report;
+  await runCli(['doctor', '--json'], context, { print: text => { report = JSON.parse(text); } });
+  const item = report.items.find(row => row.id === 'host.claude.user');
+  assert.equal(item.status, 'partial');
+  assert.equal(item.message, 'Edited skill files: studio-editor.');
+  assert.match(item.fix, /^Move your edited copies of studio-editor/);
 });
 
 test('doctor sees an rc.1 t3 install as the claude adapter, and refresh adds its missing skills', async t => {
