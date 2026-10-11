@@ -70,7 +70,7 @@ export async function executeTool(context, tool, args) {
   const setup = args[0] === tool.setup?.[0];
   const stdio = ['inherit', setup ? 'pipe' : 'inherit', 'inherit'];
   if (tool.id === 'studio') {
-    // IPC preserves launcher death before Studio's bootstrap, including on Windows.
+    // Studio consumes IPC EOF at bootstrap; other runners use a per-spawn PID.
     if (tool.runner === 'node') stdio.push('ipc');
     else invocation.env.PRAXITY_PARENT_PID = String(process.pid);
   }
