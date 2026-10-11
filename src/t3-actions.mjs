@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 const launcher = '"$HOME/.praxity/bin/praxity"';
 
-export const t3ActionsResetNote = "T3 keeps a saved copy of imported actions. Reset this project's actions in T3, then import the updated actions from t3.json.";
+export const t3ActionsRepairNote = "T3 keeps a saved copy of imported actions. In T3's project Actions settings, delete each stale saved Praxity action and import it again from t3.json, or edit its saved command to match t3.json.";
 
 export function courseActions(port) {
   return [
@@ -79,7 +79,7 @@ export function t3ActionWarnings({ home }) {
     });
     if (changed.length) warnings.push({ id: `t3.actions.${id}`, status: 'partial',
       message: `T3's saved Praxity actions for ${title} (${folder}) differ from t3.json: ${[...new Set(changed.map(action => action.name))].join(', ')}.`,
-      fix: t3ActionsResetNote });
+      fix: t3ActionsRepairNote });
   }
   return warnings;
 }

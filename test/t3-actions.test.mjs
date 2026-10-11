@@ -8,7 +8,7 @@ import { doctor } from '../src/doctor.mjs';
 import { loadSchema, validateSchema } from '../src/schema.mjs';
 import { fixture } from './helpers.mjs';
 
-const resetNote = "T3 keeps a saved copy of imported actions. Reset this project's actions in T3, then import the updated actions from t3.json.";
+const repairNote = "T3 keeps a saved copy of imported actions. In T3's project Actions settings, delete each stale saved Praxity action and import it again from t3.json, or edit its saved command to match t3.json.";
 const quiet = { print() {} };
 const t3Items = result => result.items.filter(item => item.id.startsWith('t3.actions.'));
 const probe = context => () => ({ code: 0, stdout: `v${context.pack.runtimes.node.version}`, stderr: '' });
@@ -57,7 +57,7 @@ test('doctor warns once per project for canonical saved actions, without changin
     assert.equal(warning.status, 'partial');
     assert.ok(warning.message.includes(paths.get(id)));
     assert.ok(warning.message.includes(action));
-    assert.equal(warning.fix, resetNote);
+    assert.equal(warning.fix, repairNote);
   }
   assert.equal(result.exitCode, 0);
   assert.deepEqual(validateSchema(result, loadSchema('doctor')), []);
@@ -66,7 +66,7 @@ test('doctor warns once per project for canonical saved actions, without changin
     const output = [];
     assert.equal(await runCli(args, context, { doctor: report, print: text => output.push(text) }), 0);
     assert.ok(output.join('\n').includes('stale-studio'));
-    assert.ok(output.join('\n').includes(resetNote));
+    assert.ok(output.join('\n').includes(repairNote));
   }
 });
 
@@ -147,14 +147,14 @@ test('doctor quietly skips malformed optional action data', async t => {
   assert.deepEqual(t3Items(report(context)), []);
 });
 
-test('init prints the reset/import note when actions change and leaves T3 settings alone', async t => {
+test('init prints the delete/re-import or edit note when actions change and leaves T3 settings alone', async t => {
   const { context } = fixture(t);
   const file = settings(context, 'legacy'), before = [readFileSync(file), statSync(file).mtimeMs];
   writeFileSync(join(context.cwd, 'course.yaml'), 'title: Fixture\n');
   writeFileSync(join(context.cwd, 't3.json'), JSON.stringify({ scripts: [{ name: 'Doctor', command: 'praxity doctor' }] }));
   const output = [];
   await runCli(['init'], context, { print: text => output.push(text) });
-  assert.equal(output.at(-1), resetNote);
+  assert.equal(output.at(-1), repairNote);
   assert.deepEqual([readFileSync(file), statSync(file).mtimeMs], before);
   assert.equal(existsSync(join(context.home, '.t3/userdata/statev2.sqlite')), false);
   output.length = 0;
@@ -167,7 +167,7 @@ test('init notes new actions, but not a schema or formatting change with identic
   writeFileSync(join(context.cwd, 'course.yaml'), 'title: Fixture\n');
   const output = [], print = text => output.push(text);
   await runCli(['init'], context, { print });
-  assert.equal(output.at(-1), resetNote);
+  assert.equal(output.at(-1), repairNote);
   assert.equal(existsSync(join(context.home, '.t3')), false);
   const file = join(context.cwd, 't3.json');
   const { scripts } = JSON.parse(readFileSync(file));
