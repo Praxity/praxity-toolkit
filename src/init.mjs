@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { loadSchema, validateSchema } from './schema.mjs';
+import { courseActions } from './t3-actions.mjs';
 
 const stateSchema = loadSchema('t3-actions-state');
 const portRule = stateSchema.properties.courses.items.properties.port;
@@ -10,17 +12,6 @@ const maxScripts = 50;
 
 // T3 runs actions in a login shell that may not have ~/.praxity/bin on PATH
 // yet, so actions call the launcher by its home-relative path.
-const launcher = '"$HOME/.praxity/bin/praxity"';
-
-function actions(port) {
-  return [
-    { name: 'Open in Studio', command: `${launcher} studio . --port ${port} --no-open`, icon: 'play', previewUrl: `http://127.0.0.1:${port}/launch`, autoOpenPreview: true },
-    { name: 'Export HTML', command: `${launcher} export . --format html --output course-html.zip`, icon: 'build' },
-    { name: 'Export PDF', command: `${launcher} export . --format pdf --output course.pdf`, icon: 'build' },
-    { name: 'Check accessibility', command: `${launcher} check check course-html.zip --checks accessibility`, icon: 'lint' },
-    { name: 'Doctor', command: `${launcher} doctor`, icon: 'configure' },
-  ];
-}
 
 function inspect(path) {
   try {
@@ -53,7 +44,7 @@ function projectAt(folder) {
 }
 
 function merge(project, port) {
-  const pending = new Map(actions(port).map(script => [script.name, script]));
+  const pending = new Map(courseActions(port).map(script => [script.name, script]));
   const managed = new Set(pending.keys());
   const scripts = [];
   for (const script of project.scripts ?? []) {
@@ -156,6 +147,6 @@ export function initCourse({ folder, home }) {
     if (stateBytes !== prior.bytes) writeAtomic(registry, stateBytes);
     if (readJson(file).bytes !== bytes) throw new Error('t3.json changed during praxity init; retry to merge the new contents.');
     if (output !== bytes) writeAtomic(file, output);
-    return { file, port };
+    return { file, port, actionsChanged: !isDeepStrictEqual(project.scripts ?? [], merged.scripts) };
   } finally { release(); }
 }

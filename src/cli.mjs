@@ -8,6 +8,7 @@ import { doctor } from './doctor.mjs';
 import { executeTool, probeProcess, quotePosix } from './tools.mjs';
 import { buildAdapters, installSkills, refreshSkills, uninstallSkills } from './skills.mjs';
 import { initCourse } from './init.mjs';
+import { t3ActionsResetNote } from './t3-actions.mjs';
 
 export function loadContext(root = fileURLToPath(new URL('..', import.meta.url))) {
   const pack = readManifest(join(root, 'pack.json'));
@@ -24,6 +25,7 @@ export async function runCli(args, context, dependencies = {}) {
     if (rest.length > 1 || rest[0]?.startsWith('-')) throw new Error('Usage: praxity init [folder]');
     const result = initCourse({ folder: resolve(context.cwd, rest[0] ?? '.'), home: context.home });
     print(`Updated ${result.file}. Studio uses port ${result.port}.`);
+    if (result.actionsChanged) print(t3ActionsResetNote);
     return 0;
   }
   if (command === 'version') {

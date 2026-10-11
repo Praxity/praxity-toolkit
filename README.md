@@ -105,6 +105,11 @@ Other keys and scripts stay intact. Invalid JSON is refused unchanged.
 Studio keeps a course port in 41700-41999, reserved in
 `~/.praxity/toolkit-state/t3-actions.json`. Rerunning init keeps that port and
 upgrades actions written by earlier versions.
+T3 keeps a saved copy of imported actions. After init changes those actions,
+reset the project's actions in T3, then import the updated actions from `t3.json`.
+`praxity doctor` warns per project when saved Praxity actions differ from that
+project's file. It reads `~/.t3/userdata/settings.json` and the project mapping
+in `statev2.sqlite` read-only; missing or unreadable T3 files are skipped.
 Generated actions use relative paths and a loopback `/launch` URL, with no tokens
 or machine paths. They call the launcher as `"$HOME/.praxity/bin/praxity"`,
 which the shell expands on each machine, because T3 runs actions in a login
