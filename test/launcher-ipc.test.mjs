@@ -41,7 +41,7 @@ test('only the direct Studio child receives IPC; its descendants and the launche
   const { context } = fixture(t), result = join(context.root, 'identity.json');
   context.env = { ...context.env, PRAXITY_PARENT_PID: '999999', TEST_IDENTITY: result };
   const tool = fakeTool(context, 'studio', `
-import { writeFileSync } from 'node:fs';
+import { renameSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 const descendant = JSON.parse(spawnSync(process.execPath, ['-e', 'console.log(JSON.stringify({connected:process.connected??null,parent:process.env.PRAXITY_PARENT_PID??null}))'], { encoding: 'utf8' }).stdout);
 writeFileSync(process.env.TEST_IDENTITY, JSON.stringify({ connected: process.connected ?? null, parent: process.env.PRAXITY_PARENT_PID ?? null, descendant }));
@@ -92,27 +92,32 @@ if (process.connected !== undefined) {
 }
 server = createServer((request, response) => response.end('Studio'));
 server.listen(Number(process.env.TEST_PORT), '127.0.0.1', () => {
-  writeFileSync(process.env.TEST_READY, JSON.stringify({ pid: process.pid, connected: process.connected ?? null, parent: process.env.PRAXITY_PARENT_PID ?? null, descendant }));
+  writeFileSync(process.env.TEST_READY + '.tmp', JSON.stringify({ pid: process.pid, connected: process.connected ?? null, parent: process.env.PRAXITY_PARENT_PID ?? null, descendant }));
+  renameSync(process.env.TEST_READY + '.tmp', process.env.TEST_READY);
   console.log('studio-ready');
 });
 `);
   if (source) tool.entry = relative(join(context.root, 'tools/studio'), source);
   writeFileSync(join(context.cwd, 'lesson.prax'), '---\ntitle: Test\n---\n# Hello\n');
   writeFileSync(preloader, `
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { Server } from 'node:http';
 import { syncBuiltinESMExports } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
 while (!existsSync(process.env.TEST_PID)) await delay(20);
 if (Number(readFileSync(process.env.TEST_PID, 'utf8')) === process.pid) {
-process.on('exit', code => writeFileSync(process.env.TEST_EXIT, JSON.stringify({ code })));
+const record = (file, value) => {
+  writeFileSync(file + '.tmp', JSON.stringify(value));
+  renameSync(file + '.tmp', file);
+};
+process.on('exit', code => record(process.env.TEST_EXIT, { code }));
 if (process.env.TEST_EARLY === '1') {
   writeFileSync(process.env.TEST_ENTERED, String(process.pid));
   while (!existsSync(process.env.TEST_GATE)) await delay(20);
 }
 const close = Server.prototype.close;
 Server.prototype.close = function(...args) {
-  this.once('close', () => writeFileSync(process.env.TEST_CLOSED, JSON.stringify({ clean: true })));
+  this.once('close', () => record(process.env.TEST_CLOSED, { clean: true }));
   return close.apply(this, args);
 };
 syncBuiltinESMExports();
@@ -122,12 +127,13 @@ syncBuiltinESMExports();
   // No toolkit function, child option or Studio close implementation is replaced.
   writeFileSync(driver, `
 import childProcess from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { renameSync, writeFileSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 const spawn = childProcess.spawn;
 childProcess.spawn = (...args) => {
   const child = spawn(...args);
-  writeFileSync(process.env.TEST_PID, String(child.pid));
+  writeFileSync(process.env.TEST_PID + '.tmp', String(child.pid));
+  renameSync(process.env.TEST_PID + '.tmp', process.env.TEST_PID);
   if (process.env.TEST_EARLY === '1') process.kill(process.pid, 'SIGKILL');
   return child;
 };
@@ -147,16 +153,17 @@ process.exitCode = await runCli(['studio', process.env.TEST_COURSE ?? '.', '--no
   launcher.stdout.on('data', bytes => { output += bytes; });
   launcher.stderr.on('data', bytes => { stderr += bytes; });
   const exited = once(launcher, 'exit'), closed = once(launcher, 'close');
-  let studioPid;
+  let studioPid, studioExited = false;
   t.after(() => {
     if (launcher.exitCode === null && launcher.signalCode === null) launcher.kill('SIGKILL');
-    if (studioPid !== undefined) {
+    if (studioPid > 0 && !studioExited) {
       try { process.kill(studioPid, 'SIGKILL'); }
       catch (error) { if (error.code !== 'ESRCH') throw error; }
     }
   });
   await until(() => existsSync(pidFile), 'Studio was not spawned');
   studioPid = Number(readFileSync(pidFile, 'utf8'));
+  assert.ok(Number.isSafeInteger(studioPid) && studioPid > 0);
   if (immediate) {
     assert.deepEqual(await exited, [null, 'SIGKILL']);
     await until(() => existsSync(entered), 'Studio did not reach its gated preload');
@@ -177,6 +184,7 @@ process.exitCode = await runCli(['studio', process.env.TEST_COURSE ?? '.', '--no
     assert.deepEqual(await exited, [null, 'SIGKILL']);
   }
   await until(() => existsSync(exitedFile), 'Studio outlived its launcher');
+  studioExited = true;
   assert.equal(JSON.parse(readFileSync(exitedFile)).code, 129);
   if (!immediate) assert.equal(JSON.parse(readFileSync(stopped)).clean, true);
   assert.equal(stderr, '');
