@@ -139,7 +139,7 @@ process.exitCode = await runCli(['studio', process.env.TEST_COURSE ?? '.', '--no
 `);
   const launcher = spawn(process.execPath, [driver], {
     cwd: context.root,
-    env: { ...process.env, PRAXITY_PARENT_PID: '999999', TEST_EARLY: immediate ? '1' : '0', TEST_PID: pidFile,
+    env: { ...process.env, HOME: context.home, USERPROFILE: context.home, PRAXITY_PARENT_PID: '999999', TEST_EARLY: immediate ? '1' : '0', TEST_PID: pidFile,
       TEST_COURSE: context.cwd, TEST_PORT: String(port), TEST_READY: ready, TEST_CLOSED: stopped, TEST_EXIT: exitedFile, TEST_ENTERED: entered, TEST_GATE: gate },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
