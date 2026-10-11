@@ -30,6 +30,25 @@ test('an upgrade refreshes installed host skills and leaves user skills and othe
   assert.equal(existsSync(join(setup.home, '.agents')), false);
 });
 
+test('an upgrade refreshes changed tool skills for both recorded adapters', t => {
+  const setup = installation(t);
+  passed(setup.install());
+  for (const host of ['t3', 'codex']) {
+    passed(shell(`${quote(posix(join(setup.home, '.praxity/bin/praxity')))} skills install --host ${host} --scope user`, { env: setup.env }));
+  }
+  const payload = join(setup.root, 'fake studio');
+  const tool = setup.pack.tools.find(tool => tool.id === 'studio');
+  const updated = '---\nname: prax-format\ndescription: Write a course.\n---\nUpdated tool-owned skill.\n';
+  writeFileSync(join(payload, tool.skillPath, 'SKILL.md'), updated);
+  tool.archives['darwin-arm64'] = archive(payload, join(setup.root, 'studio upgrade.tar.gz'));
+  setup.pack.version = '0.2.0'; setup.save();
+  passed(setup.install());
+  for (const folder of ['.claude/skills', '.agents/skills']) {
+    assert.equal(readFileSync(join(setup.home, folder, 'prax-format/SKILL.md'), 'utf8'), updated);
+  }
+  assert.deepEqual(JSON.parse(readFileSync(join(setup.home, '.praxity/toolkit-skills.json'))).hosts, ['claude', 'codex']);
+});
+
 test('a refused skill refresh still activates the pack and names the refresh command', t => {
   const setup = installation(t);
   passed(setup.install());

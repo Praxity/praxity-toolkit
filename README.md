@@ -67,9 +67,12 @@ the line to add. Neither the installer nor the doctor edits shell files.
 The launcher selects the active pack and uses its private Node. It sets Print's
 `PRAXITY_PRINT_TYPST` and Import's `PRAXITY_CLI` to absolute pack paths. Studio's
 present standalone publisher still needs a supported shared-Typst option.
-On macOS and Linux, each direct Studio launch receives `PRAXITY_PARENT_PID`
-with the launcher's PID, so Studio can detect launcher death during startup.
-Older Studio archives can ignore it. Other tools do not receive that identity.
+Node Studio launches receive a private IPC channel so Studio can detect launcher
+death during startup. Executable runners receive `PRAXITY_PARENT_PID` with the
+launcher's PID instead. Their Studio bootstrap must consume and remove that
+variable before loading commands or creating descendants. Older executables
+that do not consume it can pass the identity to their descendants. Other tools
+receive neither identity; the launcher's environment remains unchanged.
 
 The reviewed checkout supplies the bootstrap and default manifest.
 HTTPS manifests must match `--manifest-sha256 <reviewed-sha256>` or the SHA-256 of
