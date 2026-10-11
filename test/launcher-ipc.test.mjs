@@ -147,13 +147,16 @@ process.exitCode = await runCli(['studio', process.env.TEST_COURSE ?? '.', '--no
   launcher.stdout.on('data', bytes => { output += bytes; });
   launcher.stderr.on('data', bytes => { stderr += bytes; });
   const exited = once(launcher, 'exit'), closed = once(launcher, 'close');
+  let studioPid;
   t.after(() => {
     if (launcher.exitCode === null && launcher.signalCode === null) launcher.kill('SIGKILL');
-    if (existsSync(pidFile)) {
-      try { process.kill(Number(readFileSync(pidFile, 'utf8')), 'SIGKILL'); }
+    if (studioPid !== undefined) {
+      try { process.kill(studioPid, 'SIGKILL'); }
       catch (error) { if (error.code !== 'ESRCH') throw error; }
     }
   });
+  await until(() => existsSync(pidFile), 'Studio was not spawned');
+  studioPid = Number(readFileSync(pidFile, 'utf8'));
   if (immediate) {
     assert.deepEqual(await exited, [null, 'SIGKILL']);
     await until(() => existsSync(entered), 'Studio did not reach its gated preload');
