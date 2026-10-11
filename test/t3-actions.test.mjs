@@ -152,6 +152,33 @@ test('doctor accepts a 4 MiB settings file and quietly skips one byte more', asy
   assert.equal(report(context).exitCode, 0);
 });
 
+test('doctor skips a mapping replaced during its private snapshot copy', async t => {
+  const { context } = fixture(t);
+  settings(context, 'legacy');
+  await projects(context, ['legacy']);
+  const database = join(context.home, '.t3/userdata/statev2.sqlite');
+  const before = readFileSync(database);
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import fs from 'node:fs';
+    import { syncBuiltinESMExports } from 'node:module';
+    const source = ${JSON.stringify(database)};
+    const copy = fs.copyFileSync;
+    // Mutate the fixture at the filesystem adapter, after its first real copy.
+    fs.copyFileSync = (from, to, ...options) => {
+      copy(from, to, ...options);
+      if (from === source) { copy(source, source + '.replacement'); fs.renameSync(source + '.replacement', source); }
+    };
+    syncBuiltinESMExports();
+    const { doctor } = await import(${JSON.stringify(new URL('../src/doctor.mjs', import.meta.url).href)});
+    const context = ${JSON.stringify({ ...context, env: {} })};
+    const result = doctor(context, () => ({ code: 0, stdout: 'v' + context.pack.runtimes.node.version, stderr: '' }));
+    console.log(JSON.stringify({ exitCode: result.exitCode, warnings: result.items.filter(item => item.id.startsWith('t3.actions.')) }));
+  `], { encoding: 'utf8', timeout: 15_000 });
+  assert.equal(child.status, 0, child.stderr);
+  assert.deepEqual(JSON.parse(child.stdout), { exitCode: 0, warnings: [] });
+  assert.deepEqual(readFileSync(database), before);
+});
+
 test('doctor skips a mapping with a rollback journal without changing its directory', async t => {
   const { context } = fixture(t);
   settings(context, 'legacy');
