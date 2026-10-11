@@ -335,9 +335,9 @@ function changeSkills({ base, otherBase, host, outputs, remove }) {
 }
 
 // Sorts each generated skill by its files in base: current, stale or missing.
-// A stale skill is also edited when a file differs from its ownership record,
-// which skills install refuses to overwrite. Skills the pack does not
-// generate are ignored.
+// Edits are separate from presence: install refuses an edited owned file even
+// when SKILL.md is missing or the file matches the current pack's content.
+// Skills the pack does not generate are ignored.
 export function skillPresence({ base, host, outputs }) {
   const adapter = adapters[canonicalHost(host)], result = { current: [], stale: [], missing: [], edited: [] };
   const record = join(base, '.praxity/toolkit-skills.json');
@@ -356,6 +356,6 @@ export function skillPresence({ base, host, outputs }) {
   for (const [skill, current] of skills) {
     result[current ? 'current' : existsSync(join(base, adapter.skills, skill, 'SKILL.md')) ? 'stale' : 'missing'].push(skill);
   }
-  result.edited = result.stale.filter(skill => edited.has(skill));
+  result.edited = [...edited];
   return result;
 }
