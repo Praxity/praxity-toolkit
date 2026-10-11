@@ -7,11 +7,11 @@ const stateSchema = loadSchema('t3-actions-state');
 const portRule = stateSchema.properties.courses.items.properties.port;
 const schemaUrl = 'https://t3.codes/schema/t3.json';
 const maxScripts = 50;
+const studioCommand = /^(?:praxity|"\$HOME\/\.praxity\/bin\/praxity") studio \. --port (\d+)(?: --no-open)?$/;
 
 // T3 runs actions in a login shell that may not have ~/.praxity/bin on PATH
 // yet, so actions call the launcher by its home-relative path.
 const launcher = '"$HOME/.praxity/bin/praxity"';
-const studioCommand = /^(?:praxity|"\$HOME\/\.praxity\/bin\/praxity") studio \. --port (\d+)(?: --no-open)?$/;
 
 function actions(port) {
   return [
@@ -60,7 +60,7 @@ function merge(project, port) {
   for (const script of project.scripts ?? []) {
     const action = generated.get(script.name);
     const recognized = action && (script.name === 'Open in Studio' ? studioCommand.test(script.command)
-      : script.command === action.command || script.command === action.command.replace(launcher, 'praxity'));
+      : script.command === action.command || script.command === action.command.replace(/^"[^"]+" /, 'praxity '));
     // A familiar name alone does not make a command ours to replace.
     if (!recognized) { scripts.push(script); pending.delete(script.name); }
     else if (pending.has(script.name)) { scripts.push(pending.get(script.name)); pending.delete(script.name); }
