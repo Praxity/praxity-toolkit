@@ -434,6 +434,18 @@ for (const phase of ['stage', 'remove']) test(`interrupted adapter addition reco
   assert.equal(existsSync(join(context.home, '.praxity/toolkit-skills.lock')), false);
 });
 
+test('doctor names every missing skill and its install command even when no adapter is installed', t => {
+  const { context } = fixture(t);
+  const result = doctor(context, () => ({ code: 0, stdout: 'v24.21.0', stderr: '' }));
+  for (const scope of ['user', 'project']) for (const host of ['claude', 'codex']) {
+    assert.deepEqual(result.items.find(item => item.id === `host.${host}.${scope}`), {
+      id: `host.${host}.${scope}`, status: 'not-installed',
+      message: 'Missing skills: install-praxity, studio-editor.',
+      fix: `praxity skills install --host ${host} --scope ${scope}`,
+    });
+  }
+});
+
 test('doctor names skills missing after an upgrade, and refresh adds them without touching user skills', async t => {
   const { context } = fixture(t), quiet = { print: () => {} };
   await runCli(['skills', 'install', '--host', 'claude', '--scope', 'user'], context, quiet);
