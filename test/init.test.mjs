@@ -49,8 +49,8 @@ test('init merges scripts in place and preserves other keys, scripts and formatt
     $schema: 'https://t3.codes/schema/t3.json', iconPath: 'assets/logo.svg',
     defaultThreadEnvMode: 'worktree', worktreeSubmodules: 'none', team: { keep: true },
     scripts: [{ name: 'Custom', command: 'echo custom', async: false },
-      { name: 'Export HTML', command: 'old', runOnWorktreeCreate: true },
-      { name: 'Another', command: 'echo another' }, { name: 'Doctor', command: 'old doctor' }],
+      { name: 'Export HTML', command: 'praxity export . --format html --output course-html.zip', runOnWorktreeCreate: true },
+      { name: 'Another', command: 'echo another' }, { name: 'Doctor', command: 'praxity doctor' }],
   };
   writeFileSync(file, JSON.stringify(before, null, 4).replaceAll('\n', '\r\n') + '\r\n');
   await runCli(['init', '.'], context, quiet);
@@ -163,8 +163,13 @@ test('init restores a committed course port when the local registry is missing',
   assert.equal(portOf(context.cwd), 41873);
 });
 
-for (const command of ['praxity studio . --port 41873', `${launcher} studio . --port 41873 --no-open`]) {
-  test(`init upgrades a committed ${command.startsWith('praxity') ? 'bare' : 'current'} Studio action and keeps its port`, async t => {
+for (const command of [
+  'praxity studio . --port 41873',
+  'praxity studio . --port 41873 --no-open',
+  `${launcher} studio . --port 41873`,
+  `${launcher} studio . --port 41873 --no-open`,
+]) {
+  test(`init keeps the port and suppresses browser opening for ${command}`, async t => {
     const { context } = fixture(t);
     course(context.cwd);
     writeFileSync(join(context.cwd, 't3.json'), JSON.stringify({ scripts: [
@@ -175,6 +180,10 @@ for (const command of ['praxity studio . --port 41873', `${launcher} studio . --
     assert.equal(scripts[0].command, `${launcher} studio . --port 41873 --no-open`);
     assert.equal(scripts[0].previewUrl, 'http://127.0.0.1:41873/launch');
     assert.equal(scripts[1].command, `${launcher} doctor`);
+    const before = readFileSync(join(context.cwd, 't3.json'), 'utf8');
+    await runCli(['init'], context, quiet);
+    assert.equal(readFileSync(join(context.cwd, 't3.json'), 'utf8'), before);
+    assert.equal(JSON.parse(readFileSync(registryFile(context), 'utf8')).courses[0].port, 41873);
   });
 }
 
@@ -256,7 +265,7 @@ test('init keeps an existing schema URL and updates each managed action once at 
   const { context } = fixture(t);
   course(context.cwd);
   writeFileSync(join(context.cwd, 't3.json'), JSON.stringify({ $schema: 'custom-schema.json', scripts: [
-    { name: 'Doctor', command: 'old' }, { name: 'User', command: 'echo user' }, { name: 'Doctor', command: 'duplicate' },
+    { name: 'Doctor', command: 'praxity doctor' }, { name: 'User', command: 'echo user' }, { name: 'Doctor', command: `${launcher} doctor` },
   ] }));
   await runCli(['init'], context, quiet);
   const project = readProject(context.cwd);
@@ -265,3 +274,36 @@ test('init keeps an existing schema URL and updates each managed action once at 
   assert.deepEqual(project.scripts[0], { name: 'Doctor', command: `${launcher} doctor`, icon: 'configure' });
   assert.deepEqual(project.scripts[1], { name: 'User', command: 'echo user' });
 });
+
+test('init preserves the reviewed customized Studio command and all its extra fields', async t => {
+  const { context } = fixture(t);
+  course(context.cwd);
+  await runCli(['init'], context, quiet);
+  const project = readProject(context.cwd), file = join(context.cwd, 't3.json');
+  const studio = project.scripts.find(script => script.name === 'Open in Studio');
+  Object.assign(studio, {
+    command: `echo local-preflight && ${launcher} studio . --port 41700 --no-open`,
+    icon: 'configure', runOnWorktreeCreate: true, async: false, autoOpenPreview: false,
+  });
+  const bytes = JSON.stringify(project, null, 2) + '\n';
+  writeFileSync(file, bytes);
+  const registry = readFileSync(registryFile(context), 'utf8');
+  await runCli(['init'], context, quiet);
+  assert.deepEqual(readProject(context.cwd).scripts.find(script => script.name === 'Open in Studio'), studio);
+  assert.equal(readFileSync(file, 'utf8'), bytes);
+  assert.equal(readFileSync(registryFile(context), 'utf8'), registry);
+});
+
+for (const name of ['Export HTML', 'Export PDF', 'Check accessibility', 'Doctor']) {
+  test(`init preserves a customized ${name} command rather than appending a generated duplicate`, async t => {
+    const { context } = fixture(t);
+    course(context.cwd);
+    await runCli(['init'], context, quiet);
+    const project = readProject(context.cwd), file = join(context.cwd, 't3.json');
+    const action = project.scripts.find(script => script.name === name);
+    Object.assign(action, { command: `echo local-preflight && ${action.command}`, runOnWorktreeCreate: true, async: false });
+    writeFileSync(file, JSON.stringify(project, null, 2) + '\n');
+    await runCli(['init'], context, quiet);
+    assert.deepEqual(readProject(context.cwd).scripts, project.scripts);
+  });
+}
