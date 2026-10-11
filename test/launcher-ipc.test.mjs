@@ -41,7 +41,7 @@ test('only the direct Studio child receives IPC; its descendants and the launche
   const { context } = fixture(t), result = join(context.root, 'identity.json');
   context.env = { ...context.env, PRAXITY_PARENT_PID: '999999', TEST_IDENTITY: result };
   const tool = fakeTool(context, 'studio', `
-import { renameSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 const descendant = JSON.parse(spawnSync(process.execPath, ['-e', 'console.log(JSON.stringify({connected:process.connected??null,parent:process.env.PRAXITY_PARENT_PID??null}))'], { encoding: 'utf8' }).stdout);
 writeFileSync(process.env.TEST_IDENTITY, JSON.stringify({ connected: process.connected ?? null, parent: process.env.PRAXITY_PARENT_PID ?? null, descendant }));
@@ -68,22 +68,32 @@ writeFileSync(process.env.TEST_IDENTITY, JSON.stringify({ connected: process.con
 });
 
 for (const immediate of [true, false]) test(`IPC closes Studio cleanly when its launcher dies ${immediate ? 'immediately after spawn' : 'after readiness'}`, posixOnly, async t => {
+  let launcher, studioPid, exitedFile, studioExited = false;
+  // Close processes before the fixture removes the exit marker and course.
+  t.after(() => {
+    if (launcher && launcher.exitCode === null && launcher.signalCode === null) launcher.kill('SIGKILL');
+    if (studioPid > 0 && !studioExited && !existsSync(exitedFile)) {
+      try { process.kill(studioPid, 'SIGKILL'); }
+      catch (error) { if (error.code !== 'ESRCH') throw error; }
+    }
+  });
   const { context } = fixture(t), port = await reservePort();
   const ready = join(context.root, 'ready.json'), stopped = join(context.root, 'closed.json');
-  const exitedFile = join(context.root, 'exit.json'), pidFile = join(context.root, 'child.pid');
+  exitedFile = join(context.root, 'exit.json');
+  const pidFile = join(context.root, 'child.pid');
   const gate = join(context.root, 'bootstrap-go'), entered = join(context.root, 'bootstrap-entered');
   const preloader = join(context.root, 'preload.mjs'), driver = join(context.root, 'launcher.mjs');
   const source = process.env.TOOLKIT_STUDIO_ENTRY;
   const tool = fakeTool(context, 'studio', source ? '' : `
 import { createServer } from 'node:http';
-import { writeFileSync } from 'node:fs';
+import { renameSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 const descendant = JSON.parse(spawnSync(process.execPath, ['-e', 'console.log(JSON.stringify({connected:process.connected??null,parent:process.env.PRAXITY_PARENT_PID??null}))'], { encoding: 'utf8' }).stdout);
 let server, stopping = false;
 const stop = () => {
   if (stopping) return;
   stopping = true;
-  const done = () => { writeFileSync(process.env.TEST_CLOSED, JSON.stringify({ code: 129, clean: true })); process.exit(129); };
+  const done = () => { process.exit(129); };
   if (server) server.close(done); else done();
 };
 if (process.connected !== undefined) {
@@ -143,7 +153,7 @@ const context = ${JSON.stringify({ ...context, env: undefined })};
 context.env = { ...process.env, NODE_OPTIONS: ${JSON.stringify(`--import=${pathToFileURL(preloader).href}`)} };
 process.exitCode = await runCli(['studio', process.env.TEST_COURSE ?? '.', '--no-open', '--port', process.env.TEST_PORT], context);
 `);
-  const launcher = spawn(process.execPath, [driver], {
+  launcher = spawn(process.execPath, [driver], {
     cwd: context.root,
     env: { ...process.env, HOME: context.home, USERPROFILE: context.home, PRAXITY_PARENT_PID: '999999', TEST_EARLY: immediate ? '1' : '0', TEST_PID: pidFile,
       TEST_COURSE: context.cwd, TEST_PORT: String(port), TEST_READY: ready, TEST_CLOSED: stopped, TEST_EXIT: exitedFile, TEST_ENTERED: entered, TEST_GATE: gate },
@@ -153,14 +163,6 @@ process.exitCode = await runCli(['studio', process.env.TEST_COURSE ?? '.', '--no
   launcher.stdout.on('data', bytes => { output += bytes; });
   launcher.stderr.on('data', bytes => { stderr += bytes; });
   const exited = once(launcher, 'exit'), closed = once(launcher, 'close');
-  let studioPid, studioExited = false;
-  t.after(() => {
-    if (launcher.exitCode === null && launcher.signalCode === null) launcher.kill('SIGKILL');
-    if (studioPid > 0 && !studioExited) {
-      try { process.kill(studioPid, 'SIGKILL'); }
-      catch (error) { if (error.code !== 'ESRCH') throw error; }
-    }
-  });
   await until(() => existsSync(pidFile), 'Studio was not spawned');
   studioPid = Number(readFileSync(pidFile, 'utf8'));
   assert.ok(Number.isSafeInteger(studioPid) && studioPid > 0);
