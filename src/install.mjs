@@ -49,7 +49,7 @@ const [command, manifestFile, platform, stage] = process.argv.slice(2);
 const pack = readManifest(manifestFile);
 const plan = installationPlan(pack, platform);
 if (command === 'plan') {
-  if (platform !== 'darwin-arm64') throw new Error('Only darwin-arm64 installation is implemented');
+  if (!['darwin-arm64', 'darwin-x64'].includes(platform)) throw new Error('Only darwin-arm64 and darwin-x64 installation is implemented');
   for (const entry of plan) {
     if (!entry.entry || entry.format === 'zip') throw new Error(`Unsupported archive layout: ${entry.id}`);
     console.log([entry.kind, entry.id, entry.url, entry.sha256, entry.format, entry.stripComponents, entry.entry].join('\t'));

@@ -19,6 +19,14 @@ const checkResult = { components: [
   { id: 'java', usable: true, source: 'setup', version: '17.0.19', inventory: 'intact' },
   { id: 'verapdf', usable: false, source: 'setup', version: '1.30.2', inventory: 'damaged', reason: 'Inventory damaged' },
 ], exitCode: 1 };
+
+for (const platform of ['darwin-arm64', 'darwin-x64']) test(`doctor reports the installed ${platform} platform`, t => {
+  const context = prepared(t);
+  context.state.platform = platform;
+  assert.deepEqual(doctor(context, runner(context)).items.find(item => item.id === 'platform'), {
+    id: 'platform', status: 'ok', message: platform, fix: '',
+  });
+});
 function runner(context, check = checkResult) {
   return ({ command, args }) => {
     if (args[0] === '--version') return { code: 0, stdout: `v${context.pack.runtimes.node.version}`, stderr: '' };
@@ -72,7 +80,8 @@ test('pin mismatch and process failure are bounded diagnostic failures', t => {
   const run = runner(context);
   const result = doctor(context, invocation => invocation.args[0] === '--version' ? { code: 0, stdout: 'v25.0.0', stderr: '' }
     : invocation.args[0] === 'compile' ? { code: null, stdout: '', stderr: '', error: 'Timed out' } : run(invocation));
-  assert.equal(result.items[0].status, 'failed'); assert.equal(result.items[1].message, 'Timed out');
+  assert.equal(result.items.find(item => item.id === 'runtime.node').status, 'failed');
+  assert.equal(result.items.find(item => item.id === 'runtime.typst').message, 'Timed out');
 });
 
 test('an unusable system Java, such as the macOS stub, is not installed rather than failed', t => {

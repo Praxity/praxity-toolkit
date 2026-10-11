@@ -7,6 +7,7 @@
   "scripts": {
     "test": "node --test",
     "validate": "node scripts/validate-manifest.mjs pack.json",
+    "validate:release": "node scripts/validate-manifest.mjs pack.json --release",
     "build:adapters": "node scripts/build-adapters.mjs"
   }
 }
