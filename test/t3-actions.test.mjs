@@ -162,6 +162,45 @@ test('init prints the delete/re-import or edit note when actions change and leav
   assert.equal(output.length, 1);
 });
 
+test('init leaves customized actions unchanged and prints no repair note for schema or formatting changes', async t => {
+  const { context } = fixture(t);
+  writeFileSync(join(context.cwd, 'course.yaml'), 'title: Fixture\n');
+  await runCli(['init'], context, quiet);
+  const file = join(context.cwd, 't3.json'), project = JSON.parse(readFileSync(file));
+  for (const action of project.scripts) {
+    Object.assign(action, { command: `echo local-preflight && ${action.command}`, runOnWorktreeCreate: true, async: false, custom: { keep: true } });
+  }
+  delete project.$schema;
+  const bytes = JSON.stringify(project);
+  writeFileSync(file, bytes);
+  const output = [];
+  await runCli(['init'], context, { print: text => output.push(text) });
+  assert.deepEqual(JSON.parse(readFileSync(file)).scripts, project.scripts);
+  assert.notEqual(readFileSync(file, 'utf8'), bytes);
+  assert.equal(output.length, 1);
+  assert.equal(output.includes(repairNote), false);
+});
+
+test('init notes a recognized command upgrade while keeping a customized action', async t => {
+  const { context } = fixture(t);
+  writeFileSync(join(context.cwd, 'course.yaml'), 'title: Fixture\n');
+  await runCli(['init'], context, quiet);
+  const file = join(context.cwd, 't3.json'), project = JSON.parse(readFileSync(file));
+  const doctor = project.scripts.find(action => action.name === 'Doctor');
+  const expectedDoctor = { ...doctor };
+  doctor.command = 'praxity doctor';
+  const studio = project.scripts.find(action => action.name === 'Open in Studio');
+  studio.command = `echo local-preflight && ${studio.command}`;
+  studio.custom = { keep: true };
+  writeFileSync(file, JSON.stringify(project));
+  const output = [];
+  await runCli(['init'], context, { print: text => output.push(text) });
+  const updated = JSON.parse(readFileSync(file));
+  assert.deepEqual(updated.scripts.find(action => action.name === 'Doctor'), expectedDoctor);
+  assert.deepEqual(updated.scripts.find(action => action.name === 'Open in Studio'), studio);
+  assert.deepEqual(output.slice(1), [repairNote]);
+});
+
 test('init notes new actions, but not a schema or formatting change with identical actions', async t => {
   const { context } = fixture(t);
   writeFileSync(join(context.cwd, 'course.yaml'), 'title: Fixture\n');
