@@ -11,6 +11,7 @@ const maxScripts = 50;
 // T3 runs actions in a login shell that may not have ~/.praxity/bin on PATH
 // yet, so actions call the launcher by its home-relative path.
 const launcher = '"$HOME/.praxity/bin/praxity"';
+const studioCommand = /^(?:praxity|"\$HOME\/\.praxity\/bin\/praxity") studio \. --port (\d+)(?: --no-open)?$/;
 
 function actions(port) {
   return [
@@ -53,11 +54,15 @@ function projectAt(folder) {
 }
 
 function merge(project, port) {
-  const pending = new Map(actions(port).map(script => [script.name, script]));
-  const managed = new Set(pending.keys());
+  const generated = new Map(actions(port).map(script => [script.name, script]));
+  const pending = new Map(generated);
   const scripts = [];
   for (const script of project.scripts ?? []) {
-    if (!managed.has(script.name)) scripts.push(script);
+    const action = generated.get(script.name);
+    const recognized = action && (script.name === 'Open in Studio' ? studioCommand.test(script.command)
+      : script.command === action.command || script.command === action.command.replace(launcher, 'praxity'));
+    // A familiar name alone does not make a command ours to replace.
+    if (!recognized) { scripts.push(script); pending.delete(script.name); }
     else if (pending.has(script.name)) { scripts.push(pending.get(script.name)); pending.delete(script.name); }
   }
   scripts.push(...pending.values());
@@ -67,7 +72,7 @@ function merge(project, port) {
 
 function studioPort(project) {
   const script = project.scripts?.find(script => script.name === 'Open in Studio');
-  const command = script?.command.match(/^(?:praxity|"\$HOME\/\.praxity\/bin\/praxity") studio \. --port (\d+)(?: --no-open)?$/);
+  const command = script?.command.match(studioCommand);
   const preview = script?.previewUrl?.match?.(/^http:\/\/127\.0\.0\.1:(\d+)\/launch$/);
   return [...new Set([command, preview].filter(Boolean).map(match => Number(match[1])))];
 }
