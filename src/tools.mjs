@@ -41,8 +41,6 @@ export function toolInvocation(context, tool, args) {
   const entry = join(directory, tool.entry);
   if (!context.state.installed.includes(tool.id) || !existsSync(entry)) throw new Error(`${tool.id} is not installed. Run the reviewed install.sh after its archive is published.`);
   const env = toolEnvironment(context);
-  // Studio can detect launcher death even before its first parent-PID snapshot.
-  if (tool.id === 'studio' && process.platform !== 'win32') env.PRAXITY_PARENT_PID = String(process.pid);
   return { command: tool.runner === 'node' ? context.node : entry,
     args: tool.runner === 'node' ? [entry, ...args] : args, env };
 }
@@ -70,6 +68,12 @@ export function probeProcess({ command, args, env }, options = {}) {
 export async function executeTool(context, tool, args) {
   const invocation = toolInvocation(context, tool, args);
   const setup = args[0] === tool.setup?.[0];
+  const stdio = ['inherit', setup ? 'pipe' : 'inherit', 'inherit'];
+  if (tool.id === 'studio') {
+    // IPC preserves launcher death before Studio's bootstrap, including on Windows.
+    if (tool.runner === 'node') stdio.push('ipc');
+    else invocation.env.PRAXITY_PARENT_PID = String(process.pid);
+  }
   // Stopping the launcher stops the tool, and the launcher exits only after
   // the tool has. Other tools run detached: Node calls setsid(), so each gets
   // a new session without the terminal as its controlling terminal. Ctrl+C
@@ -78,7 +82,7 @@ export async function executeTool(context, tool, args) {
   // launcher; the tool keeps running. Setup keeps the terminal for its consent
   // prompts, so the terminal's signals already reach it. Windows has neither.
   const child = spawn(invocation.command, invocation.args, { env: invocation.env,
-    detached: !setup && process.platform !== 'win32', stdio: ['inherit', setup ? 'pipe' : 'inherit', 'inherit'] });
+    detached: !setup && process.platform !== 'win32', stdio });
   let output = '';
   if (setup) child.stdout.on('data', bytes => {
     process.stdout.write(bytes);
