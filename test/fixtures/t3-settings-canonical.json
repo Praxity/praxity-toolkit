@@ -1,0 +1,23 @@
+{
+  "projectSettingsFolded": true,
+  "projectSettingsOverrides": {
+    "stale-studio": { "defaultProjectScripts": [
+      { "id": "old-studio", "name": "Open in Studio", "command": "praxity studio . --port 41700", "icon": "play", "runOnWorktreeCreate": false, "previewUrl": "http://127.0.0.1:41700/launch", "autoOpenPreview": true }
+    ] },
+    "stale-export": { "defaultProjectScripts": [
+      { "id": "old-export", "name": "Export PDF", "command": "praxity export . --format pdf --output course.pdf", "icon": "build", "runOnWorktreeCreate": false }
+    ] },
+    "current": { "defaultProjectScripts": [
+      { "id": "current-studio", "name": "Open in Studio", "command": "\"$HOME/.praxity/bin/praxity\" studio . --port 41702 --no-open", "icon": "play", "runOnWorktreeCreate": false, "async": true, "previewUrl": "http://127.0.0.1:41702/launch", "autoOpenPreview": true },
+      { "id": "current-export", "name": "Export PDF", "command": "\"$HOME/.praxity/bin/praxity\" export . --format pdf --output course.pdf", "icon": "build", "runOnWorktreeCreate": false, "autoOpenPreview": false }
+    ] },
+    "reset": { "defaultAutoPull": true },
+    "custom": { "defaultProjectScripts": [{ "id": "custom", "name": "Custom", "command": "echo custom", "icon": "play", "runOnWorktreeCreate": false }] },
+    "missing-file": { "defaultProjectScripts": [{ "id": "missing", "name": "Doctor", "command": "praxity doctor", "icon": "configure", "runOnWorktreeCreate": false }] }
+  },
+  "projectScriptOverrides": {
+    "stale-studio": [{ "id": "old-studio", "name": "Open in Studio", "command": "praxity studio . --port 41700", "icon": "play", "runOnWorktreeCreate": false }],
+    "current": [{ "id": "old-doctor", "name": "Doctor", "command": "praxity doctor", "icon": "configure", "runOnWorktreeCreate": false }],
+    "reset": [{ "id": "old-reset", "name": "Doctor", "command": "praxity doctor", "icon": "configure", "runOnWorktreeCreate": false }]
+  }
+}

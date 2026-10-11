@@ -4,11 +4,12 @@ import { tmpdir } from 'node:os';
 import { toolInvocation, toolEnvironment, probeProcess, quotePosix, readDeclined } from './tools.mjs';
 import { adapters, buildAdapters, skillPresence } from './skills.mjs';
 import { loadSchema, validateSchema } from './schema.mjs';
+import { t3ActionWarnings } from './t3-actions.mjs';
 
 const item = (id, status, message, fix = '') => ({ id, status, message, fix });
 
 export function doctor(context, run = probeProcess) {
-  const items = [item('platform', 'ok', context.state.platform)];
+  const items = [item('platform', 'ok', context.state.platform), ...t3ActionWarnings(context)];
   const work = mkdtempSync(join(tmpdir(), 'praxity-doctor-'));
   const reinstall = `sh ${quotePosix(join(context.root, 'install.sh'))}`;
   const success = result => result.code === 0 && !result.error;

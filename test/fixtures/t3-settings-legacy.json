@@ -1,0 +1,9 @@
+{
+  "projectScriptOverrides": {
+    "legacy": [
+      { "id": "legacy-studio", "name": "Open in Studio", "command": "praxity studio . --port 41700", "icon": "play", "runOnWorktreeCreate": false, "previewUrl": "http://127.0.0.1:41700/launch", "autoOpenPreview": true },
+      { "id": "legacy-doctor", "name": "Doctor", "command": "praxity doctor", "icon": "configure", "runOnWorktreeCreate": false }
+    ],
+    "reset": null
+  }
+}
