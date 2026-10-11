@@ -163,8 +163,13 @@ test('init restores a committed course port when the local registry is missing',
   assert.equal(portOf(context.cwd), 41873);
 });
 
-for (const command of ['praxity studio . --port 41873', `${launcher} studio . --port 41873 --no-open`]) {
-  test(`init upgrades a committed ${command.startsWith('praxity') ? 'bare' : 'current'} Studio action and keeps its port`, async t => {
+for (const command of [
+  'praxity studio . --port 41873',
+  'praxity studio . --port 41873 --no-open',
+  `${launcher} studio . --port 41873`,
+  `${launcher} studio . --port 41873 --no-open`,
+]) {
+  test(`init keeps the port and suppresses browser opening for ${command}`, async t => {
     const { context } = fixture(t);
     course(context.cwd);
     writeFileSync(join(context.cwd, 't3.json'), JSON.stringify({ scripts: [
@@ -175,6 +180,10 @@ for (const command of ['praxity studio . --port 41873', `${launcher} studio . --
     assert.equal(scripts[0].command, `${launcher} studio . --port 41873 --no-open`);
     assert.equal(scripts[0].previewUrl, 'http://127.0.0.1:41873/launch');
     assert.equal(scripts[1].command, `${launcher} doctor`);
+    const before = readFileSync(join(context.cwd, 't3.json'), 'utf8');
+    await runCli(['init'], context, quiet);
+    assert.equal(readFileSync(join(context.cwd, 't3.json'), 'utf8'), before);
+    assert.equal(JSON.parse(readFileSync(registryFile(context), 'utf8')).courses[0].port, 41873);
   });
 }
 
