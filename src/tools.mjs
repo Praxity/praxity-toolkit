@@ -70,7 +70,8 @@ export async function executeTool(context, tool, args) {
   const setup = args[0] === tool.setup?.[0];
   const stdio = ['inherit', setup ? 'pipe' : 'inherit', 'inherit'];
   if (tool.id === 'studio') {
-    // Studio consumes IPC EOF at bootstrap; other runners use a per-spawn PID.
+    // Studio consumes IPC EOF; executable bootstraps must consume/delete the
+    // per-spawn PID before importing commands or creating descendants.
     if (tool.runner === 'node') stdio.push('ipc');
     else invocation.env.PRAXITY_PARENT_PID = String(process.pid);
   }

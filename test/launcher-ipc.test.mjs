@@ -53,17 +53,21 @@ if (process.connected) process.disconnect();
 });
 
 const posixOnly = { skip: process.platform === 'win32' && 'POSIX hard-kill lifecycle; Windows IPC identity is tested separately' };
-test('an executable Studio fallback receives only its direct launcher PID', posixOnly, async t => {
+test('an executable Studio consumes its launcher PID before spawning descendants', posixOnly, async t => {
   const { context } = fixture(t), result = join(context.root, 'identity.json');
   context.env = { ...context.env, PRAXITY_PARENT_PID: '999999', TEST_IDENTITY: result };
   const tool = fakeTool(context, 'studio', `#!${process.execPath}
 import { writeFileSync } from 'node:fs';
-writeFileSync(process.env.TEST_IDENTITY, JSON.stringify({ connected: process.connected ?? null, parent: process.env.PRAXITY_PARENT_PID }));
+import { spawnSync } from 'node:child_process';
+const parent = process.env.PRAXITY_PARENT_PID;
+delete process.env.PRAXITY_PARENT_PID;
+const descendant = JSON.parse(spawnSync(process.execPath, ['-e', 'console.log(JSON.stringify({parent:process.env.PRAXITY_PARENT_PID??null}))'], { encoding: 'utf8' }).stdout);
+writeFileSync(process.env.TEST_IDENTITY, JSON.stringify({ connected: process.connected ?? null, parent, descendant }));
 `);
   tool.runner = 'exec';
   chmodSync(join(context.root, 'tools/studio', tool.entry), 0o755);
   assert.equal(await executeTool(context, tool, ['studio', '--help']), 0);
-  assert.deepEqual(JSON.parse(readFileSync(result)), { connected: null, parent: String(process.pid) });
+  assert.deepEqual(JSON.parse(readFileSync(result)), { connected: null, parent: String(process.pid), descendant: { parent: null } });
   assert.equal(context.env.PRAXITY_PARENT_PID, '999999');
 });
 
