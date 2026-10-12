@@ -40,14 +40,44 @@ jobs:
       - run: node --test
       - name: Real manifest install in an isolated home
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           task_home=$(mktemp -d "${RUNNER_TEMP}/praxity-toolkit.XXXXXX")
           trap 'rm -rf -- "$task_home"' EXIT
+          manifest="file://$PWD/pack.json"
+          tag=$(node -p '"v" + require("./pack.json").version')
+          # Draft release URLs need authentication until publication. Keep the
+          # canonical pins intact and install an independently checked local copy.
+          if [ "$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true ]; then
+            mkdir "$task_home/assets"
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir "$task_home/assets" --pattern '*.tar.gz'
+            TASK_HOME="$task_home" node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { pathToFileURL } from 'node:url';
+          const pack = JSON.parse(readFileSync('pack.json', 'utf8'));
+          const prefix = `https://github.com/${process.env.GITHUB_REPOSITORY}/releases/download/v${pack.version}/`;
+          for (const tool of pack.tools) for (const archive of Object.values(tool.archives)) {
+            if (archive.status !== 'published') continue;
+            assert.ok(archive.url.startsWith(prefix), tool.id);
+            const name = archive.url.slice(prefix.length);
+            assert.match(name, /^[A-Za-z0-9._-]+\.tar\.gz$/);
+            const path = `${process.env.TASK_HOME}/assets/${name}`;
+            assert.equal(createHash('sha256').update(readFileSync(path)).digest('hex'), archive.sha256, name);
+            archive.url = pathToFileURL(path).href;
+          }
+          writeFileSync(`${process.env.TASK_HOME}/pack-local.json`, JSON.stringify(pack) + '\n');
+          NODE
+            manifest="file://$task_home/pack-local.json"
+          fi
+          unset GH_TOKEN
           export HOME="$task_home"
-          sh install.sh
+          sh install.sh --manifest "$manifest"
           "$HOME/.praxity/bin/praxity" version
           "$HOME/.praxity/bin/praxity" doctor --json
           node -e 'const state = require(process.env.HOME + "/.praxity/toolkit/" + require("./pack.json").version + "/state.json"); require("node:assert/strict").equal(state.platform, process.argv[1])' '${{ matrix.platform }}'
-          sh install.sh
+          sh install.sh --manifest "$manifest"
           sh install.sh uninstall

@@ -14,8 +14,9 @@ T3 course actions and skills for T3, Claude Code and Codex CLI. There is no SDK
 or MCP server. `pack.json` pins every archive by URL and SHA-256.
 
 Studio reads grammar 4 courses; convert grammar 3 courses first.
-Pack 0.1.0 pins Studio CLI `0.3.0-main.b32878e7`. All five macOS
-tool archives download from the `v0.1.0` toolkit release after publication.
+Pack 0.1.1 pins Studio CLI `0.3.0-main.92e21573` and Check
+`0.6.0-main.993069cc`. All macOS tool archives download from the `v0.1.1`
+toolkit release after publication.
 The installer supports Apple Silicon and Intel macOS and chooses native arm64
 runtimes when launched through Rosetta. Studio has an archive for each
 architecture. Check, Trace, Print and Import share portable archives across both.
@@ -103,11 +104,12 @@ Run `praxity init [folder]` in a course with `course.yaml` or `.prax` lessons.
 It writes a commit-ready `t3.json` with Open in Studio, Export HTML, Export PDF,
 Check accessibility and Doctor actions. Exports write `course-html.zip` and
 `course.pdf`; export HTML before running the accessibility check.
-Other keys and scripts stay intact. Invalid JSON is refused unchanged.
+Other keys and scripts stay intact, including commands you customised.
+Invalid JSON is refused unchanged.
 
 Studio keeps a course port in 41700-41999, reserved in
 `~/.praxity/toolkit-state/t3-actions.json`. Rerunning init keeps that port and
-upgrades actions written by earlier versions.
+upgrades recognised actions written by earlier versions.
 T3 keeps a saved copy of imported actions. After init changes those actions,
 delete each stale saved Praxity action in T3's project Actions settings and import
 it again from `t3.json`, or edit its saved command to match `t3.json`.
@@ -208,7 +210,7 @@ installed tools' skill folders without rewriting them.
 
 ```sh
 node scripts/build-adapters.mjs --output dist/adapters
-node scripts/build-adapters.mjs --installed "$HOME/.praxity/toolkit/0.1.0" --output dist/installed-adapters
+node scripts/build-adapters.mjs --installed "$HOME/.praxity/toolkit/0.1.1" --output dist/installed-adapters
 praxity skills install --host t3 --scope user
 ```
 
@@ -330,7 +332,7 @@ executable launchers. Tar archives must not escape their artifact root.
 Keep licences, Required Notices, dependencies and inventories in the payload.
 
 All five darwin-arm64 tool archives and Studio's darwin-x64 archive are staged
-as assets of this repository's `v0.1.0` release, each with its SHA-256 in
+as assets of this repository's `v0.1.1` release, each with its SHA-256 in
 `pack.json`. Download URLs become available when that release is published.
 Check, Trace, Print and Import reuse the same archives for Intel macOS. The
 Trace and Print asset names retain `darwin-arm64` for compatibility; their
