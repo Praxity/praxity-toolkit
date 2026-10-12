@@ -10,6 +10,16 @@ import { fixture, repository } from './helpers.mjs';
 const workflow = readFileSync(join(repository, '.github/workflows/ci.yml'), 'utf8');
 const conversion = workflow.match(/<<'NODE'\r?\n([\s\S]*?)\r?\n\s*NODE\r?\n/)?.[1];
 
+test('CI confines draft push permission to manual staging without persisted credentials', () => {
+  const staging = workflow.split('  stage-release-assets:\n')[1]?.split('  offline:\n')[0];
+  assert.ok(staging);
+  assert.match(staging, /if: github\.event_name == 'workflow_dispatch' && inputs\.stage_release_assets/);
+  assert.match(staging, /persist-credentials: false/);
+  assert.equal((workflow.match(/contents: write/g) ?? []).length, 1);
+  assert.match(staging, /contents: write/);
+  assert.doesNotMatch(staging, /node --test|sh install\.sh/);
+});
+
 function draft(t) {
   const { root, pack } = fixture(t);
   mkdirSync(join(root, 'assets'));

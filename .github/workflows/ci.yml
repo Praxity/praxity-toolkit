@@ -4,12 +4,45 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      stage_release_assets:
+        description: Download draft assets for this reviewed commit before PR checks
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
+  stage-release-assets:
+    if: github.event_name == 'workflow_dispatch' && inputs.stage_release_assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # GitHub hides drafts from tokens without push access. Keep that permission
+    # in a manually dispatched download job, away from tests and installed tools.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download draft assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=$(node -p '"v" + require("./pack.json").version')
+          mkdir "$RUNNER_TEMP/release-assets"
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/release-assets" --pattern '*.tar.gz'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: ${{ runner.temp }}/release-assets/*.tar.gz
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
   # The repository is public, so GitHub-hosted runners are free and no
   # self-hosted machine runs code from pull requests.
   offline:
+    if: github.event_name != 'workflow_dispatch' || !inputs.stage_release_assets
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -21,6 +54,10 @@ jobs:
       - run: node --test
       - run: npm run validate:release
   macos-install:
+    if: github.event_name != 'workflow_dispatch' || !inputs.stage_release_assets
+    permissions:
+      contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
@@ -42,17 +79,23 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           task_home=$(mktemp -d "${RUNNER_TEMP}/praxity-toolkit.XXXXXX")
           trap 'rm -rf -- "$task_home"' EXIT
           manifest="file://$PWD/pack.json"
           tag=$(node -p '"v" + require("./pack.json").version')
-          # Draft release URLs need authentication until publication. Keep the
-          # canonical pins intact and install an independently checked local copy.
-          if [ "$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true ]; then
+          # A read-only PR token cannot see drafts. If the tag is unpublished,
+          # consume the manual staging run for this exact commit, then check pins.
+          releases=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100")
+          published=$(printf '%s' "$releases" | jq --arg tag "$tag" '[.[] | select(.tag_name == $tag and .draft == false)] | length')
+          if [ "$published" = 0 ]; then
+            runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?event=workflow_dispatch&head_sha=$RELEASE_REVISION&status=success&per_page=100")
+            stage_run=$(printf '%s' "$runs" | jq -r --arg sha "$RELEASE_REVISION" '[.workflow_runs[] | select(.head_sha == $sha)] | first | .id // empty')
+            [ -n "$stage_run" ] || { echo "Stage draft assets for commit $RELEASE_REVISION with workflow_dispatch first" >&2; exit 1; }
             mkdir "$task_home/assets"
-            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir "$task_home/assets" --pattern '*.tar.gz'
+            gh run download "$stage_run" --repo "$GITHUB_REPOSITORY" --name release-assets --dir "$task_home/assets"
             TASK_HOME="$task_home" node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
           import { createHash } from 'node:crypto';
