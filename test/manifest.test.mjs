@@ -8,6 +8,8 @@ import { loadSchema, validateSchema } from '../src/schema.mjs';
 
 test('real pack validates and every published archive has a complete contract', () => {
   const pack = realPack();
+  assert.equal(pack.version, '0.1.1');
+  assert.equal(JSON.parse(readFileSync(join(repository, 'package.json'), 'utf8')).version, pack.version);
   assert.deepEqual(validateSchema(pack, loadSchema('pack')), []);
   assert.deepEqual(validateManifest(pack), []);
   assert.deepEqual(validateReleaseManifest(pack), []);
@@ -41,7 +43,7 @@ for (const platform of ['darwin-arm64', 'darwin-x64']) test(`installation plan s
   const pack = realPack();
   const plan = installationPlan(pack, platform);
   assert.equal(plan.find(entry => entry.id === 'node').url, `https://nodejs.org/dist/v24.21.0/node-v24.21.0-${platform}.tar.gz`);
-  assert.equal(plan.find(entry => entry.id === 'studio').url, `https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.0/praxity-studio-cli-0.3.0-main.b4962141-${platform}.tar.gz`);
+  assert.equal(plan.find(entry => entry.id === 'studio').url, `https://github.com/Praxity/praxity-toolkit/releases/download/v0.1.1/praxity-studio-cli-0.3.0-main.92e21573-${platform}.tar.gz`);
 });
 
 test('every declared platform requires every tool archive', () => {
