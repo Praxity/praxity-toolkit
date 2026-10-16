@@ -9,6 +9,7 @@ import { executeTool, probeProcess, quotePosix } from './tools.mjs';
 import { buildAdapters, installSkills, refreshSkills, uninstallSkills } from './skills.mjs';
 import { initCourse } from './init.mjs';
 import { t3ActionsRepairNote } from './t3-actions.mjs';
+import { updatePack } from './update.mjs';
 
 export function loadContext(root = fileURLToPath(new URL('..', import.meta.url))) {
   const pack = readManifest(join(root, 'pack.json'));
@@ -30,8 +31,13 @@ export async function runCli(args, context, dependencies = {}) {
   }
   if (command === 'version') {
     if (rest.length) throw new Error('Usage: praxity version');
-    print(JSON.stringify({ pack: context.pack.version, runtimes: Object.fromEntries(Object.entries(context.pack.runtimes).map(([id, runtime]) => [id, runtime.version])), tools: context.pack.tools.map(tool => ({ id: tool.id, version: tool.version, installed: context.state.installed.includes(tool.id) })) }, null, 2));
+    const studio = context.pack.tools.find(tool => tool.id === 'studio');
+    print(JSON.stringify({ pack: context.pack.version, studioSha: studio?.sourceRevision ?? studio?.version.match(/-main\.([a-f0-9]{7,40})$/)?.[1] ?? null, runtimes: Object.fromEntries(Object.entries(context.pack.runtimes).map(([id, runtime]) => [id, runtime.version])), tools: context.pack.tools.map(tool => ({ id: tool.id, version: tool.version, installed: context.state.installed.includes(tool.id) })) }, null, 2));
     return 0;
+  }
+  if (command === 'update') {
+    if (rest.length) throw new Error('Usage: praxity update');
+    return updatePack(context, dependencies);
   }
   if (command === 'doctor') {
     if (rest.some(arg => arg !== '--json') || rest.length > 1) throw new Error('Usage: praxity doctor [--json]');
