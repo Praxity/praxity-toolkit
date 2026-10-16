@@ -25,6 +25,36 @@ Before publishing, run `npm run validate:release`. It refuses unpublished tools
 on every platform in `platforms`; regular validation still permits staged packs.
 CI installs on GitHub-hosted `macos-15` and `macos-15-intel` runners.
 
+New Studio packs use `scripts/publish-studio-pack.mjs`. Its default is a dry run:
+
+```sh
+node scripts/publish-studio-pack.mjs --version 0.1.2 --studio-sha <full-tested-sha> --archives <verified-candidate-folder> --output <new-output-folder> --dry-run
+```
+
+The producer workflow admits a green main SHA, builds both native Mac archives,
+runs the package and browser checks, then tests the packages on hosted ARM64 and
+Intel Macs. The publisher independently verifies checksums, the exact payload
+inventory, runtime and legal files, upstream notices and the tested Studio SHA.
+The new manifest records that SHA in the Studio tool's `sourceRevision` field.
+Only generated CLI artifacts and the public Rubato installer are released.
+
+The output contains `pack.json`, `rubato-<version>.tar.gz` and `SHA256SUMS`.
+The bootstrap archive contains a `rubato/` directory with the installer and the
+same manifest. Release assets also include both Studio archives. Other tool pins
+stay on their original releases; new manifests use the current Rubato repository
+URL. Existing manifests and releases stay unchanged.
+
+`--publish` creates a fresh draft, uploads this allowlist and publishes last.
+It requires a token with Contents write and Administration read on this repository
+and refuses an existing release or tag. Enable
+[GitHub release immutability](https://docs.github.com/en/rest/repos/repos#check-if-immutable-releases-are-enabled-for-a-repository)
+first; the publisher checks it before writing. An upload failure leaves an inactive
+draft. Inspect it and choose a new version for the next attempt.
+
+The official release channel is a trust decision in Rubato's publisher and GitHub
+account controls. `SHA256SUMS` detects damaged downloads; a checksum delivered by
+the same release is not an independent signature.
+
 Praxity's tools execute locally. The chosen host and model provider control
 telemetry and what they transmit. An editor capability URL can enter the host's
 tool transcript.
