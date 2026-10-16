@@ -1,10 +1,14 @@
 {
   "claude": {
     ".claude/skills/install-praxity/SKILL.md": "43cda56851a2af1669495c08ec29adca3767b7dee663354bf11548a25ebee7bd",
-    ".claude/skills/studio-editor/SKILL.md": "6da7ddd29e3e537b6b10111b249e550c9485f99f9a9f3b08027c2437ba4bbfe5"
+    ".claude/skills/studio-editor/references/annotation-examples.md": "46ad0c8b0fe857e67619c515df808e903f81dcd37629b1fc4c02c1eff8105d22",
+    ".claude/skills/studio-editor/scripts/resolve-annotation.mjs": "8cd897b2ff832d2004799bf36e1ac0b91aaeb17752cfecc08e863057179d0313",
+    ".claude/skills/studio-editor/SKILL.md": "9b8d68a8b9bba423c99abeaf6d58112a5f389e8ced21de128c58270c276342af"
   },
   "codex": {
     ".agents/skills/install-praxity/SKILL.md": "43cda56851a2af1669495c08ec29adca3767b7dee663354bf11548a25ebee7bd",
-    ".agents/skills/studio-editor/SKILL.md": "6da7ddd29e3e537b6b10111b249e550c9485f99f9a9f3b08027c2437ba4bbfe5"
+    ".agents/skills/studio-editor/references/annotation-examples.md": "46ad0c8b0fe857e67619c515df808e903f81dcd37629b1fc4c02c1eff8105d22",
+    ".agents/skills/studio-editor/scripts/resolve-annotation.mjs": "8cd897b2ff832d2004799bf36e1ac0b91aaeb17752cfecc08e863057179d0313",
+    ".agents/skills/studio-editor/SKILL.md": "9b8d68a8b9bba423c99abeaf6d58112a5f389e8ced21de128c58270c276342af"
   }
 }
