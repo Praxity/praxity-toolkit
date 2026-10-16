@@ -3,6 +3,25 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["owner", "schemaVersion", "courses"],
+  "$defs": {
+    "vscodeGlobs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "**/.praxity-write-*": { "const": true },
+        "**/.praxity-transaction.json": { "const": true },
+        "**/.praxity": { "const": true }
+      }
+    },
+    "vscodeSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "files.exclude": { "$ref": "#/$defs/vscodeGlobs" },
+        "search.exclude": { "$ref": "#/$defs/vscodeGlobs" }
+      }
+    }
+  },
   "properties": {
     "owner": { "const": "praxity-toolkit" },
     "schemaVersion": { "const": 1 },
@@ -15,7 +34,17 @@
         "required": ["folder", "port"],
         "properties": {
           "folder": { "type": "string", "minLength": 1 },
-          "port": { "type": "integer", "minimum": 41700, "maximum": 41999 }
+          "port": { "type": "integer", "minimum": 41700, "maximum": 41999 },
+          "vscodeSettings": { "$ref": "#/$defs/vscodeSettings" },
+          "pendingVscodeSettings": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sha256", "entries"],
+            "properties": {
+              "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "entries": { "$ref": "#/$defs/vscodeSettings" }
+            }
+          }
         }
       }
     }

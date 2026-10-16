@@ -27,6 +27,7 @@ export async function runCli(args, context, dependencies = {}) {
     const result = initCourse({ folder: resolve(context.cwd, rest[0] ?? '.'), home: context.home });
     print(`Updated ${result.file}. Studio uses port ${result.port}.`);
     if (result.actionsChanged) print(t3ActionsRepairNote);
+    for (const message of result.messages) print(message);
     return 0;
   }
   if (command === 'version') {
