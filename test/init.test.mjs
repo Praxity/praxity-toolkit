@@ -211,7 +211,12 @@ test('init recovers a durable reservation and dead lock before the project write
   writeFileSync(join(directory, 't3-actions.lock'), JSON.stringify({ owner: 'praxity-toolkit', pid: Number(child.stdout), id: 'interrupted-init' }));
   await runCli(['init'], context, quiet);
   assert.equal(portOf(context.cwd), 41891);
-  assert.equal(readFileSync(registry, 'utf8'), state);
+  const recovered = JSON.parse(state);
+  recovered.courses[0].vscodeSettings = {
+    'files.exclude': { '**/.praxity-write-*': true, '**/.praxity-transaction.json': true, '**/.praxity': true },
+    'search.exclude': { '**/.praxity-write-*': true, '**/.praxity-transaction.json': true, '**/.praxity': true },
+  };
+  assert.equal(readFileSync(registry, 'utf8'), JSON.stringify(recovered, null, 2) + '\n');
   assert.equal(existsSync(join(directory, 't3-actions.lock')), false);
 });
 

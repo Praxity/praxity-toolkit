@@ -203,6 +203,14 @@ Check accessibility and Doctor actions. Exports write `course-html.zip` and
 Other keys and scripts stay intact, including commands you customised.
 Invalid JSON is refused unchanged.
 
+Init also hides `.praxity/`, `.praxity-write-*` recovery copies and
+`.praxity-transaction.json` in VS Code's file explorer and search through
+`.vscode/settings.json`. It preserves author settings, including explicit
+`false` values, and reports those overrides. Settings with comments or values
+that cannot be safely rewritten stay unchanged; init prints the entries to add.
+It records its additions in the private course registry and never changes Git
+ignore rules. Keep `.praxity/` identity data in Git.
+
 Studio keeps a course port in 41700-41999, reserved in
 `~/.praxity/toolkit-state/t3-actions.json`. Rerunning init keeps that port and
 upgrades recognised actions written by earlier versions.
