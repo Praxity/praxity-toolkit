@@ -40,6 +40,13 @@ outputs. Downloads identify the candidate release by its numeric ID. A replaced
 archive fails even when its accompanying checksum and inventory agree.
 The new manifest records that SHA in the Studio tool's `sourceRevision` field.
 Only generated CLI artifacts and the public Rubato installer are released.
+The build inventory owns all payload names, including split JavaScript chunks.
+The private-path scan covers Praxity-built files and `inventory.json`. Its only
+upstream exemptions are `typst/`, `node_modules/`, `licenses/` and
+`export-assets/image-codecs/`, and each exempt file must have `third-party`
+provenance in the verified inventory. Upstream binaries, wasm and documentation
+may embed their authors' build paths. Their file hashes remain verified; the
+inventory records dependency versions, licences and notices.
 
 The output contains `pack.json`, `rubato-<version>.tar.gz` and `SHA256SUMS`.
 The bootstrap archive contains a `rubato/` directory with the installer and the

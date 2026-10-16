@@ -29,7 +29,8 @@ function candidate(t, mutate = () => {}, mutateInventory = () => {}, mutateStage
       version: '0.3.0', entrypoint: 'praxity.mjs', legal: ['legal/LICENSE', 'legal/LICENSING.md'],
       dependencies: [{ name: 'example', notices: ['licenses/example/LICENSE'] }] };
     mutate({ arch, files, inventory });
-    inventory.files = Object.entries(files).map(([path, bytes]) => ({ path, bytes: Buffer.byteLength(bytes), sha256: hash(bytes), component: 'studio-module' }));
+    inventory.files = Object.entries(files).map(([path, bytes]) => ({ path, bytes: Buffer.byteLength(bytes), sha256: hash(bytes),
+      component: /^(?:typst|node_modules|licenses)\//.test(path) || path.startsWith('export-assets/image-codecs/') ? 'third-party' : 'studio-module' }));
     inventory.payloadSha256 = hash(JSON.stringify(inventory.files));
     mutateInventory(inventory);
     for (const [name, bytes] of Object.entries({ ...files, 'inventory.json': JSON.stringify(inventory) })) {
@@ -135,16 +136,86 @@ for (const [name, mutate] of [
   assert.equal(existsSync(options.outputDir), false);
 });
 
-for (const failure of ['immutability disabled', 'existing release', 'existing tag', 'network error']) test(`GitHub adapter refuses ${failure}`, async () => {
+for (const [failure, message] of [
+  ['immutability disabled', /Enable Rubato release immutability first/],
+  ['existing release', /Release already exists/],
+  ['existing tag', /Tag already exists/],
+  ['network error', /unavailable/],
+]) test(`GitHub adapter refuses ${failure}`, async () => {
+  const calls = [];
   const adapter = githubRelease(repository, (_command, args) => {
-    assert.equal(args[0], 'api', 'No mutation before verification');
+    calls.push(args);
+    const route = args.find(arg => arg.startsWith('repos/'));
     if (failure === 'network error') throw new Error('unavailable');
-    if (args.at(-1).endsWith('immutable-releases')) return JSON.stringify({ enabled: failure !== 'immutability disabled' });
-    if (args.at(-1).includes('/releases?') && failure === 'existing release') return '[[{"tag_name":"v0.1.2"}]]';
-    if (args.at(-1).includes('/tags?') && failure === 'existing tag') return '[[{"name":"v0.1.2"}]]';
-    return '[[]]';
+    if (route.endsWith('immutable-releases')) return JSON.stringify({ enabled: failure !== 'immutability disabled' });
+    if (route.includes('/releases?')) return JSON.stringify([failure === 'existing release' ? [{ tag_name: 'v0.1.2', draft: true }] : []]);
+    if (route.endsWith('/releases/latest')) return '{"tag_name":"v0.1.1"}';
+    if (route.includes('/tags?')) return JSON.stringify([failure === 'existing tag' ? [{ name: 'v0.1.2' }] : []]);
+    if (route.endsWith('/releases') && args.includes('POST')) return '{"id":42}';
+    throw new Error(`Unexpected GitHub call: ${JSON.stringify(args)}`);
   });
-  await assert.rejects(adapter.assertNewImmutableRelease('v0.1.2'));
+  await assert.rejects(async () => {
+    await adapter.assertNewImmutableRelease('v0.1.2');
+    await adapter.createDraft('v0.1.2');
+  }, message);
+  assert.equal(calls.some(args => args.includes('POST') || args.includes('PATCH')), false);
+});
+
+test('dry-run accepts the v0.1.1 payload shape with inventoried split chunks and upstream paths', async t => {
+  const f = candidate(t, ({ files, inventory }) => {
+    for (const name of ['cli-K2NCPBMU.mjs', 'course-pdf-AB75R4GA.mjs', 'main-K7BNWGL3.mjs',
+      'build-MXWUU5I7.mjs', 'text-response-download-Y5QAWY45.mjs', 'webp_enc-2GXME6SF.mjs', 'webp_enc_simd-DJEBU7KC.mjs']) files[name] = 'export const value = 1;';
+    files['typst/typst'] = Buffer.from('\0upstream binary /Users/runner/.cargo/registry/compiler\0');
+    files['node_modules/example/README.md'] = 'Upstream /Users/shengjun/source';
+    files['export-assets/image-codecs/encoder.wasm'] = Buffer.from('\0wasm /home/mario/build\0');
+    inventory.dependencies.push({ name: 'typst', version: '0.15.1', license: 'Apache-2.0', notices: ['licenses/example/LICENSE'] });
+  });
+  const pack = await publishStudioPack(f.options, f.release);
+  assert.equal(pack.version, '0.1.2');
+  assert.deepEqual(validateReleaseManifest(pack), []);
+  assert.deepEqual(f.calls, [['check', 'v0.1.2']]);
+});
+
+for (const name of ['praxity.mjs', 'main-K7BNWGL3.mjs', 'editor/entry.js', 'export-assets/runtime.js']) test(`private path in Studio-built ${name} refuses`, async t => {
+  const f = candidate(t, ({ files }) => { files[name] = '/Users/private/source'; });
+  await assert.rejects(publishStudioPack(f.options, f.release), /Private path or provenance/);
+  assert.deepEqual(f.calls, []);
+});
+
+test('third-party component alone cannot exempt Studio-built code', async t => {
+  const f = candidate(t, ({ files }) => { files['praxity.mjs'] = '/Users/private/source'; }, inventory => {
+    inventory.files.find(entry => entry.path === 'praxity.mjs').component = 'third-party';
+    inventory.payloadSha256 = hash(JSON.stringify(inventory.files));
+  });
+  await assert.rejects(publishStudioPack(f.options, f.release), /Private path or provenance/);
+  assert.deepEqual(f.calls, []);
+});
+
+test('upstream path exemption requires third-party inventory provenance', async t => {
+  const f = candidate(t, ({ files }) => { files['typst/typst'] = '/Users/runner/.cargo/compiler'; }, inventory => {
+    inventory.files.find(entry => entry.path === 'typst/typst').component = 'studio-module';
+    inventory.payloadSha256 = hash(JSON.stringify(inventory.files));
+  });
+  await assert.rejects(publishStudioPack(f.options, f.release), /Private path or provenance/);
+  assert.deepEqual(f.calls, []);
+});
+
+test('private path in inventory refuses', async t => {
+  const f = candidate(t, ({ inventory }) => { inventory.buildPath = '/Users/private/source'; });
+  await assert.rejects(publishStudioPack(f.options, f.release), /Private path or provenance/);
+  assert.deepEqual(f.calls, []);
+});
+
+test('archive pathname symlink refuses before publication', async t => {
+  const f = candidate(t);
+  const archive = join(f.options.archivesDir, 'praxity-cli-0.3.0-macos-arm64.tar.gz');
+  const original = join(f.root, 'original.tar.gz');
+  cpSync(archive, original);
+  rmSync(archive);
+  symlinkSync(original, archive, 'file');
+  await assert.rejects(publishStudioPack(f.options, f.release), /Archive must be a regular file/);
+  assert.deepEqual(f.calls, []);
+  assert.equal(existsSync(f.options.outputDir), false);
 });
 
 test('manifest schema rejects malformed tested Studio revision', () => {

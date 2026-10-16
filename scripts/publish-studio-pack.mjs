@@ -28,12 +28,6 @@ function verifyArchive(file, arch, studioSha, expectedDigest, studio) {
   const members = archiveInventory(file, 1);
   const files = members.filter(member => member.type !== 'D');
   requireValue(files.every(member => member.type === 'P'), 'Archive links refused');
-  const allowed = /^(?:praxity\.mjs|chunk-[A-Za-z0-9_-]+\.mjs|package\.json|inventory\.json|(?:editor|export-assets|typst|node_modules|licenses|legal|prax-format)\/.+)$/;
-  for (const member of files) {
-    requireValue(allowed.test(member.name) && !member.name.endsWith('.map') &&
-      !member.name.split('/').includes('.git') &&
-      !/^(?:editor|export-assets)\/.*\.[cm]?tsx?$/.test(member.name), 'Unapproved archive member');
-  }
   // Candidate archives have one fixed root. Reject alternate roots and aliases.
   const rawNames = tar(['-tf', file]).toString().trim().split(/\r?\n/);
   requireValue(rawNames.every(name => name === 'studio-cli/' || name.startsWith('studio-cli/')), 'Unexpected archive root');
@@ -47,6 +41,11 @@ function verifyArchive(file, arch, studioSha, expectedDigest, studio) {
   requireValue(expected.size === inventory.files.length, 'Duplicate inventory member');
   requireValue(files.length === expected.size + 1, 'Inventory does not cover archive');
   for (const member of files) {
+    // The build inventory owns chunk names. Limit it to public payload families.
+    requireValue((member.name === 'inventory.json' || expected.has(member.name)) &&
+      /^(?:[^/]+\.mjs|package\.json|inventory\.json|(?:editor|export-assets|typst|node_modules|licenses|legal|prax-format)\/.+)$/.test(member.name) &&
+      !member.name.endsWith('.map') && !member.name.split('/').includes('.git') &&
+      !/^(?:editor|export-assets)\/.*\.[cm]?tsx?$/.test(member.name), 'Unapproved archive member');
     if (member.name === 'inventory.json') continue;
     requireValue(expected.get(member.name) === member.hash, 'Payload hash mismatch');
   }
@@ -57,9 +56,13 @@ function verifyArchive(file, arch, studioSha, expectedDigest, studio) {
     required.push(...dependency.notices);
   }
   requireValue(required.every(name => expected.has(name)), 'Missing legal, runtime or package payload');
-  // Build tooling already checks its checkout path. Check common accidental
-  // absolute paths again at the public boundary, including the inventory.
-  const text = tar(['-xOf', file]).toString();
+  // Upstream paths are allowed only in these vendored families, with third-party
+  // provenance in the verified inventory. Scan all Praxity payload and inventory.
+  const upstream = /^(?:typst|node_modules|licenses)\/|^export-assets\/image-codecs\//;
+  const scanned = ['inventory.json', ...inventory.files
+    .filter(entry => !(entry.component === 'third-party' && upstream.test(entry.path)))
+    .map(entry => entry.path)];
+  const text = tar(['-xOf', file, ...scanned.map(name => `studio-cli/${name}`)]).toString();
   requireValue(!/(?:[A-Za-z]:[\\/](?:Users|GitHub|home)[\\/]|\/(?:Users|home)\/[^/\s]+\/|\/Volumes\/|\/private\/var\/folders\/|\/opt\/|studio-cli-review|build-inputs\.json)/.test(text), 'Private path or provenance in payload');
   return { digest, version: inventory.version };
 }
