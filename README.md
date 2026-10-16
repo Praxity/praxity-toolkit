@@ -28,13 +28,16 @@ CI installs on GitHub-hosted `macos-15` and `macos-15-intel` runners.
 New Studio packs use `scripts/publish-studio-pack.mjs`. Its default is a dry run:
 
 ```sh
-node scripts/publish-studio-pack.mjs --version 0.1.2 --studio-sha <full-tested-sha> --archives <verified-candidate-folder> --output <new-output-folder> --dry-run
+node scripts/publish-studio-pack.mjs --version 0.1.2 --studio-sha <full-tested-sha> --expect-arm64-sha256 <build-job-digest> --expect-x64-sha256 <build-job-digest> --archives <verified-candidate-folder> --output <new-output-folder> --dry-run
 ```
 
-The producer workflow admits a green main SHA, builds both native Mac archives,
+The producer workflow admits a green main branch SHA, builds both native Mac archives,
 runs the package and browser checks, then tests the packages on hosted ARM64 and
 Intel Macs. The publisher independently verifies checksums, the exact payload
-inventory, runtime and legal files, upstream notices and the tested Studio SHA.
+inventory, manifest-owned installer paths and skill, legal files, upstream notices
+and the tested Studio SHA. Expected archive digests come from the build job's
+outputs. Downloads identify the candidate release by its numeric ID. A replaced
+archive fails even when its accompanying checksum and inventory agree.
 The new manifest records that SHA in the Studio tool's `sourceRevision` field.
 Only generated CLI artifacts and the public Rubato installer are released.
 
@@ -44,7 +47,12 @@ same manifest. Release assets also include both Studio archives. Other tool pins
 stay on their original releases; new manifests use the current Rubato repository
 URL. Existing manifests and releases stay unchanged.
 
-`--publish` creates a fresh draft, uploads this allowlist and publishes last.
+Both modes check that the requested version exceeds Latest and every published
+stable release. Dry runs read these release prerequisites without creating a release.
+`--publish` creates a fresh draft, uploads this allowlist, downloads and rehashes
+the uploaded assets, then publishes last. The publisher reads back the live release
+to require immutability and the exact asset digests. A readback mismatch fails
+loudly after activation and requires publisher inspection.
 It requires a token with Contents write and Administration read on this repository
 and refuses an existing release or tag. Enable
 [GitHub release immutability](https://docs.github.com/en/rest/repos/repos#check-if-immutable-releases-are-enabled-for-a-repository)
