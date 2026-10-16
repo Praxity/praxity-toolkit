@@ -12,7 +12,7 @@ function tar(archive, args) {
 
 // Hash gzip payloads in one pass. XZ payloads use BSD tar, avoiding a new
 // bootstrap dependency on an xz executable. Typst's XZ archive is small.
-export function archiveInventory(archive, strip) {
+export function archiveInventory(archive, strip, { allowHardlinks = true } = {}) {
   const members = [];
   if (archive.endsWith('.gz')) {
     const bytes = gunzipSync(readFileSync(archive));
@@ -66,6 +66,7 @@ export function archiveInventory(archive, strip) {
     else if (member.kind === '0') { type = 'P'; hash = member.hash; }
     else if (member.kind === '2') { type = 'Q'; hash = digest(member.link); }
     else if (member.kind === '1') {
+      if (!allowHardlinks) throw new Error('Unsafe release bootstrap link');
       const target = original.get(member.link);
       if (!target || target.kind !== '0') throw new Error('Unsupported archive hardlink target');
       type = 'P'; hash = target.hash;

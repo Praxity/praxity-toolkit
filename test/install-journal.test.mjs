@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync, readFileSync, existsSync, cpSync, renameSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, cpSync, renameSync, symlinkSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
-import { fixture } from './helpers.mjs';
+import { fixture, repository } from './helpers.mjs';
 import { installJournal } from '../src/install-ledger.mjs';
 import { archive, installation } from './installer-fixture.mjs';
 
@@ -50,4 +51,16 @@ test('a corrupted pending hash stops uninstall before any recorded file is remov
   const result = setup.action('uninstall'); assert.notEqual(result.status, 0);
   assert.match(result.stderr, /corrupt.*journal/i);
   assert.equal(readFileSync(file, 'utf8'), 'KEEP THESE BYTES');
+});
+
+test('journal CLI records a copy when invoked through a directory alias', t => {
+  const setup = journalFixture(t), alias = join(setup.root, 'bootstrap-alias');
+  symlinkSync(repository, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  const source = join(setup.root, 'source.txt'), target = join(setup.toolkit, 'copied.txt');
+  writeFileSync(source, 'expected bytes');
+  const result = spawnSync(process.execPath, [join(alias, 'src/install-ledger.mjs'), 'intent-copy', setup.home, setup.toolkit, target, source], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  cpSync(source, target);
+  setup.journal().complete(target);
+  setup.journal().assert(target);
 });

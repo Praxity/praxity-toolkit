@@ -112,11 +112,16 @@ The next Studio launch uses the new pack. A running process is never updated
 in place.
 
 The command follows the official stable channel configured in
-`src/update.mjs`, the latest published non-prerelease at `Praxity/rubato`.
+`src/update.mjs`, the latest immutable published non-prerelease at `Praxity/rubato`.
 It accepts no alternate channel, manifest URL or digest flags. It downloads
 `pack.json`, `rubato-<version>.tar.gz` and `SHA256SUMS` from that release,
 checks both downloads against the checksum list, checks that the manifest
-matches the release tag and bootstrap, then runs that release's installer.
+matches the release tag and bootstrap, then validates against that verified
+release's own schema and runs its installer. New manifest fields need not be
+known to the installed pack. The GitHub JSON Accept header is sent only to
+the metadata API; asset downloads use the server's default representation.
+Local fixtures check these headers. The tests include no recorded or live
+GitHub asset response.
 The installer verifies runtime and tool archives and activates the pack with
 its existing ownership journal and atomic version switch. The previous pack
 remains available to `praxity rollback`. Downloads or checksum failures leave
@@ -131,8 +136,10 @@ Manual installation of arbitrary manifests keeps the reviewed digest rules
 described under Install.
 
 Installation refreshes owned user skills. Update also runs the same skill
-refresh command at project scope in the current directory. No ownership record
-means no project skills are added. Modified owned files and unowned files are
+refresh command at project scope in the nearest parent directory with a
+Rubato skills ownership record, including the current directory. The home
+directory remains user scope. No ownership record means no project skills
+are added. Modified owned files and unowned files are
 preserved; a refused refresh names the command to retry after resolving the
 reported file. A pack can be active even when a skill refresh refuses.
 Start a new host session if it needs to discover changed skills.

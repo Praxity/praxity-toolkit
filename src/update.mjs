@@ -3,7 +3,8 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync,
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { archiveInventory } from './archive-inventory.mjs';
-import { readManifest } from './manifest.mjs';
+import { loadSchema, validateSchema } from './schema.mjs';
+import { findSkillsProject } from './skills.mjs';
 import { probeProcess } from './tools.mjs';
 
 // This channel is part of the reviewed bootstrap, never a CLI or environment override.
@@ -37,12 +38,12 @@ export async function updatePack(context, dependencies = {}) {
   const print = dependencies.print ?? console.log;
   assertStudioClosed(context, run);
   const download = async url => {
-    const response = await fetchRelease(url, { signal: AbortSignal.timeout(30_000), headers: { Accept: 'application/vnd.github+json' } });
+    const response = await fetchRelease(url, { signal: AbortSignal.timeout(30_000), headers: url === officialReleaseChannel.metadata ? { Accept: 'application/vnd.github+json' } : undefined });
     if (!response.ok) throw new Error(`Official release download failed: HTTP ${response.status}`);
     return Buffer.from(await response.arrayBuffer());
   };
   const release = JSON.parse((await download(officialReleaseChannel.metadata)).toString('utf8'));
-  if (release.draft !== false || release.prerelease !== false || !/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(release.tag_name) || !Array.isArray(release.assets)) throw new Error('Invalid official stable release');
+  if (release.draft !== false || release.prerelease !== false || release.immutable !== true || !/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(release.tag_name) || !Array.isArray(release.assets)) throw new Error('Invalid official stable release');
   const asset = name => {
     const matches = release.assets.filter(value => value.name === name);
     const expected = `${officialReleaseChannel.downloads}${release.tag_name}/${name}`;
@@ -63,8 +64,9 @@ export async function updatePack(context, dependencies = {}) {
   const manifest = await verified('pack.json');
   const scratch = mkdtempSync(join(tmpdir(), 'rubato-update-'));
   try {
-    const manifestFile = join(scratch, 'pack.json'); writeFileSync(manifestFile, manifest);
-    const pack = readManifest(manifestFile);
+    const pack = JSON.parse(manifest);
+    const versionErrors = validateSchema(pack?.version, loadSchema('pack').properties.version);
+    if (versionErrors.length) throw new Error(`Invalid pack manifest:\n${versionErrors.join('\n')}`);
     if (`v${pack.version}` !== release.tag_name) throw new Error('Release tag does not match its manifest');
     if (!newer(pack.version, context.pack.version)) {
       print(`Active pack ${context.pack.version} is already at or ahead of the official release.`);
@@ -74,12 +76,15 @@ export async function updatePack(context, dependencies = {}) {
     const bootstrapFile = join(scratch, bootstrapName);
     writeFileSync(bootstrapFile, await verified(bootstrapName));
     // Reuse the installer's archive owner; bootstrap code must contain only regular files/directories.
-    const inventory = archiveInventory(bootstrapFile, 1);
+    const inventory = archiveInventory(bootstrapFile, 1, { allowHardlinks: false });
     if (inventory.some(entry => !['P', 'D'].includes(entry.type))) throw new Error('Unsafe release bootstrap link');
     const bootstrap = join(scratch, 'bootstrap'); mkdirSync(bootstrap);
     const extracted = run({ command: 'tar', args: ['-xf', bootstrapFile, '-C', bootstrap, '--strip-components=1'], env: context.env });
     if (extracted.error || extracted.code !== 0) throw new Error(`Release bootstrap extraction failed: ${extracted.error ?? extracted.stderr}`);
     if (!existsSync(join(bootstrap, 'pack.json')) || digest(readFileSync(join(bootstrap, 'pack.json'))) !== digest(manifest)) throw new Error('Bootstrap manifest SHA-256 mismatch');
+    // The verified release owns its manifest schema; the installed pack may be older.
+    const errors = validateSchema(pack, JSON.parse(readFileSync(join(bootstrap, 'schemas/pack.schema.json'), 'utf8')));
+    if (errors.length) throw new Error(`Invalid pack manifest:\n${errors.join('\n')}`);
     assertStudioClosed(context, run);
     // No timeout: interrupting the journaled installer leaves recovery to the next run.
     const installed = run({ command: 'sh', args: [join(bootstrap, 'install.sh'), '--manifest-sha256', digest(manifest), '--platform', context.state.platform], env: context.env }, { stdio: 'inherit', timeout: undefined });
@@ -87,8 +92,9 @@ export async function updatePack(context, dependencies = {}) {
     const activeFile = join(context.home, '.praxity/toolkit/active');
     if (!existsSync(activeFile) || readFileSync(activeFile, 'utf8').split('\n')[0] !== pack.version) throw new Error(`Release installer failed (${installed.code}). Nothing activated; rerun praxity update after resolving the reported error.`);
     let code = installed.code ?? 1;
-    if (realpathSync(context.cwd) !== realpathSync(context.home)) {
-      const refreshed = run({ command: 'sh', args: [join(context.home, '.praxity/bin/praxity'), 'skills', 'refresh', '--scope', 'project'], env: context.env }, { cwd: context.cwd, stdio: 'inherit', timeout: undefined });
+    const project = findSkillsProject(context.cwd, context.home);
+    if (project) {
+      const refreshed = run({ command: 'sh', args: [join(context.home, '.praxity/bin/praxity'), 'skills', 'refresh', '--scope', 'project'], env: context.env }, { cwd: project, stdio: 'inherit', timeout: undefined });
       if (refreshed.error || refreshed.code !== 0) {
         print(`Project skills were not refreshed; pack ${pack.version} is active. ${refreshed.error ?? refreshed.stderr ?? ''} Resolve the reported file, then run praxity skills refresh --scope project in this project.`);
         code = refreshed.code || 1;
