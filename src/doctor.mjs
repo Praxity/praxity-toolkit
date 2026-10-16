@@ -112,7 +112,7 @@ export function doctor(context, run = probeProcess) {
       const install = `praxity skills install --host ${host} --scope ${scope}`;
       let presence;
       try { presence = skillPresence({ base, host, outputs: generated }); }
-      catch (error) { items.push(item(`host.${host}.${scope}`, 'failed', error.message, `Restore the record from a backup, or move it and the toolkit skills in ${adapters[host].skills} aside, then run ${install}`)); continue; }
+      catch (error) { items.push(item(`host.${host}.${scope}`, 'failed', error.message, `Restore the record from a backup, or move it and the Rubato skills in ${adapters[host].skills} aside, then run ${install}`)); continue; }
       const { current, stale, missing, edited } = presence;
       // Install keeps edited owned files, but recreates moved or deleted ones.
       const fix = edited.length ? `Move your edited copies of ${edited.join(', ')} out of ${adapters[host].skills}, then run ${install}` : install;
@@ -127,8 +127,8 @@ export function doctor(context, run = probeProcess) {
     const found = (context.env.PATH ?? '').split(delimiter).filter(directory => isAbsolute(directory)).map(directory => join(directory, 'praxity')).find(executable);
     const launcher = join(context.home, '.praxity/bin/praxity');
     const pathFix = 'Add this line at the end of your shell startup file (~/.zshrc for zsh, ~/.bash_profile for bash), then open a new terminal and restart T3: export PATH="$HOME/.praxity/bin:$PATH"';
-    items.push(found && existsSync(launcher) && realpathSync(found) === realpathSync(launcher) ? item('launcher.path', 'ok', 'praxity on PATH is the toolkit launcher')
-      : item('launcher.path', 'not-installed', `${found ? `praxity on PATH runs ${found}, not the toolkit launcher` : 'praxity is not on PATH'}. T3 course actions still work; in a terminal, type ~/.praxity/bin/praxity or add the PATH line.`, pathFix));
+    items.push(found && existsSync(launcher) && realpathSync(found) === realpathSync(launcher) ? item('launcher.path', 'ok', 'praxity on PATH is the Rubato launcher')
+      : item('launcher.path', 'not-installed', `${found ? `praxity on PATH runs ${found}, not the Rubato launcher` : 'praxity is not on PATH'}. T3 course actions still work; in a terminal, type ~/.praxity/bin/praxity or add the PATH line.`, pathFix));
     const result = { schemaVersion: 2, packVersion: context.pack.version, items, exitCode: items.some(item => item.status === 'failed') ? 1 : 0 };
     const errors = validateSchema(result, loadSchema('doctor'));
     if (errors.length) throw new Error(errors.join('\n'));

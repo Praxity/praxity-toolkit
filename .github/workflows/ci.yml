@@ -1,4 +1,4 @@
-name: Toolkit checks
+name: Rubato checks
 on:
   push:
     branches: [main]
@@ -82,7 +82,7 @@ jobs:
           RELEASE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          task_home=$(mktemp -d "${RUNNER_TEMP}/praxity-toolkit.XXXXXX")
+          task_home=$(mktemp -d "${RUNNER_TEMP}/rubato.XXXXXX")
           trap 'rm -rf -- "$task_home"' EXIT
           manifest="file://$PWD/pack.json"
           tag=$(node -p '"v" + require("./pack.json").version')

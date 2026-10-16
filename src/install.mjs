@@ -96,7 +96,7 @@ if (command === 'plan') {
     journal.write(join(stage, 'bin', `praxity-${tool.id}`), body, { mode: 0o755 });
   }
   const base = process.argv[6];
-  const wrapper = `#!/bin/sh\n# Praxity toolkit launcher\nset -eu\nROOT=${quotePosix(base)}\nVERSION=$(sed -n '1p' "${'$'}ROOT/active")\ncase "${'$'}VERSION" in *[!a-zA-Z0-9.-]*|.*|'') echo 'Invalid current pack' >&2; exit 1;; esac\nexec "${'$'}ROOT/${'$'}VERSION/runtimes/node/${pack.runtimes.node.entry[platform]}" "${'$'}ROOT/${'$'}VERSION/src/cli.mjs" "${'$'}@"\n`;
+  const wrapper = `#!/bin/sh\n# Rubato launcher\nset -eu\nROOT=${quotePosix(base)}\nVERSION=$(sed -n '1p' "${'$'}ROOT/active")\ncase "${'$'}VERSION" in *[!a-zA-Z0-9.-]*|.*|'') echo 'Invalid current pack' >&2; exit 1;; esac\nexec "${'$'}ROOT/${'$'}VERSION/runtimes/node/${pack.runtimes.node.entry[platform]}" "${'$'}ROOT/${'$'}VERSION/src/cli.mjs" "${'$'}@"\n`;
   journal.write(join(stage, 'launcher.sh'), wrapper, { mode: 0o755 });
   collect(stage);
   journal.write(join(stage, 'state.json'), JSON.stringify({ owner: 'praxity-toolkit', schemaVersion: 1, platform,
@@ -116,7 +116,7 @@ if (command === 'plan') {
     if (state.manifestSha256 !== manifestSha256 || state.files?.['pack.json'] !== manifestSha256) continue;
     // Rollback cannot help: the candidate is the pack it would return to.
     try { verifyInstalled(folder, manifestSha256, ''); } catch (error) {
-      console.error(`${folder} holds early release candidate ${legacy.version}, and it is damaged. ${error.message.trim()} Every install stops here until you move it aside. Follow the backup steps under Recovery in the toolkit README.`);
+      console.error(`${folder} holds early release candidate ${legacy.version}, and it is damaged. ${error.message.trim()} Every install stops here until you move it aside. Follow the backup steps under Recovery in the Rubato README.`);
       process.exit(1);
     }
     console.log(`${legacy.label}\t${legacy.version}`);
