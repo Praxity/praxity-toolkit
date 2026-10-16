@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
 // Self-contained so the host can send this function to the preview's main frame.
 export function resolveAnnotationSelector(selector) {
   const pageUrl = document.location.href.split('#')[0];
@@ -36,14 +40,27 @@ export function resolveAnnotationSelector(selector) {
   const occurrences = Array.from(document.querySelectorAll('[data-node-id]'))
     .filter(element => element.getAttribute('data-node-id') === nodeId)
     .map(element => ({
-      field: element.getAttribute('data-field'),
-      role: element.getAttribute('role'),
+      dataFieldAttribute: element.getAttribute('data-field'),
+      ariaRole: element.getAttribute('role'),
       quote: quote(element),
       ancestorNodeIds: ancestorNodeIds(element),
     }));
   return {
     status: 'candidate', pageUrl, nodeId,
-    field: nearestAttribute('data-field'), role: nearestAttribute('role'),
+    dataFieldAttribute: nearestAttribute('data-field'), ariaRole: nearestAttribute('role'),
     quote: quote(selected), occurrences, ancestorNodeIds: ancestorNodeIds(owner),
   };
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  try {
+    if (process.argv.length !== 4 || process.argv[2] !== '--expression') throw new Error('usage');
+    const selector = JSON.parse(readFileSync(process.argv[3], 'utf8'));
+    if (selector !== null && typeof selector !== 'string') throw new Error('selector type');
+    process.stdout.write(`(${resolveAnnotationSelector.toString()})(${JSON.stringify(selector)})\n`);
+  } catch {
+    // Do not echo untrusted file contents or parser errors into tool output.
+    process.stderr.write('Cannot build annotation expression. Use --expression <selector-file> with a readable JSON string or null.\n');
+    process.exitCode = 1;
+  }
 }
