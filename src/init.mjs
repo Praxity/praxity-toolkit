@@ -71,12 +71,15 @@ function studioPort(project) {
   return [...new Set([command, preview].filter(Boolean).map(match => Number(match[1])))];
 }
 
-function writeAtomic(file, bytes) {
+function writeAtomic(file, bytes, expectedBytes) {
   const temp = join(dirname(file), `.praxity-init-${randomUUID()}.tmp`);
   let created = false;
   try {
     writeFileSync(temp, bytes, { flag: 'wx', flush: true }); created = true;
-    inspect(file);
+    const stat = inspect(file);
+    if (expectedBytes !== undefined && !isDeepStrictEqual(stat ? readFileSync(file) : null, expectedBytes)) {
+      throw new Error('VS Code settings changed during praxity init; retry to merge the new contents.');
+    }
     renameSync(temp, file);
   } finally {
     if (created && existsSync(temp)) unlinkSync(temp);
@@ -89,14 +92,18 @@ function vscodeAt(folder) {
   if (directoryStat && !directoryStat.isDirectory()) throw new Error(`Expected a VS Code settings directory: ${directory}`);
   const stat = inspect(file);
   if (stat && !stat.isFile()) throw new Error(`Expected a JSON file: ${file}`);
-  const bytes = stat ? readFileSync(file, 'utf8') : '';
-  let settings;
-  try { settings = stat ? JSON.parse(bytes) : {}; }
-  catch (error) { if (!(error instanceof SyntaxError)) throw error; }
+  const bytes = stat ? readFileSync(file) : null;
+  let text = '', settings;
+  try {
+    text = stat ? new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes) : '';
+    settings = stat ? JSON.parse(text) : {};
+  } catch (error) {
+    if (!(error instanceof SyntaxError) && error.code !== 'ERR_ENCODING_INVALID_ENCODED_DATA') throw error;
+  }
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   // Refuse rewrites that lose duplicate keys, numeric precision or key order.
   // JSONC and noncanonical value spellings also get manual instructions.
-  const compact = bytes.replace(/"(?:\\.|[^"\\])*"|\s+/g, token => token.startsWith('"') ? token : '');
+  const compact = text.replace(/"(?:\\.|[^"\\])*"|\s+/g, token => token.startsWith('"') ? token : '');
   if (!object(settings) || (stat && compact !== JSON.stringify(settings)) ||
       vscodeSections.some(section => Object.hasOwn(settings, section) && !object(settings[section]))) settings = undefined;
   const messages = settings ? [] : [
@@ -111,7 +118,7 @@ function mergeVscode(plan, entry) {
   const owned = entry.vscodeSettings ?? {};
   const pending = entry.pendingVscodeSettings;
   if (pending) {
-    if (sha256(plan.bytes) === pending.sha256) {
+    if (settings && sha256(plan.bytes ?? '') === pending.sha256) {
       for (const [section, entries] of Object.entries(pending.entries)) owned[section] = { ...owned[section], ...entries };
     } else messages.push('VS Code settings ownership is unconfirmed after an interrupted init; pending additions remain unclaimed.');
     delete entry.pendingVscodeSettings;
@@ -133,8 +140,9 @@ function mergeVscode(plan, entry) {
   if (Object.keys(retained).length) entry.vscodeSettings = retained;
   else delete entry.vscodeSettings;
   if (!Object.keys(added).length) return { ...plan, output: plan.bytes };
-  const indent = plan.bytes.match(/(?:^|\n)([ \t]+)"/)?.[1] ?? '  ';
-  const newline = plan.bytes.includes('\r\n') ? '\r\n' : '\n';
+  const text = plan.bytes?.toString('utf8') ?? '';
+  const indent = text.match(/(?:^|\n)([ \t]+)"/)?.[1] ?? '  ';
+  const newline = text.includes('\r\n') ? '\r\n' : '\n';
   const output = JSON.stringify(settings, null, indent).replaceAll('\n', newline) + newline;
   // Reserve additions before writing, but claim them only after their exact bytes
   // are installed. A retry can settle a killed init without adopting author keys.
@@ -219,9 +227,8 @@ export function initCourse({ folder, home }) {
     if (readJson(file).bytes !== bytes) throw new Error('t3.json changed during praxity init; retry to merge the new contents.');
     if (output !== bytes) writeAtomic(file, output);
     if (settings.output !== settings.bytes) {
-      if (vscodeAt(folder).bytes !== settings.bytes) throw new Error('VS Code settings changed during praxity init; retry to merge the new contents.');
       mkdirSync(dirname(settings.file), { recursive: true });
-      writeAtomic(settings.file, settings.output);
+      writeAtomic(settings.file, settings.output, settings.bytes);
       mergeVscode(vscodeAt(folder), own);
       writeAtomic(registry, JSON.stringify(state, null, 2) + '\n');
     }

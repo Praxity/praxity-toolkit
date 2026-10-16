@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { runCli } from '../src/cli.mjs';
@@ -49,6 +49,28 @@ function interruptedInit(context, mode) {
   `;
   return spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' });
 }
+
+function inventory(folder) {
+  return Object.fromEntries(readdirSync(folder, { recursive: true, withFileTypes: true })
+    .filter(entry => entry.isFile())
+    .map(entry => [join(entry.parentPath, entry.name).slice(folder.length + 1).replaceAll('\\', '/'),
+      readFileSync(join(entry.parentPath, entry.name))]));
+}
+
+test('init changes only settings and T3 actions in the project', async t => {
+  const { context, init } = setup(t, '{"editor.fontSize":16}\n');
+  writeFileSync(join(context.cwd, '.vscode/tasks.json'), '{"version":"2.0.0","tasks":[{"label":"author task"}]}\n');
+  writeFileSync(join(context.cwd, 't3.json'), '{"author":true}\n');
+  const before = inventory(context.cwd);
+  await init();
+  const after = inventory(context.cwd);
+  for (const file of ['.vscode/settings.json', 't3.json']) {
+    assert.ok(Object.hasOwn(after, file));
+    delete before[file];
+    delete after[file];
+  }
+  assert.deepEqual(after, before);
+});
 
 test('init hides recovery files and identity in both VS Code views, without changing Git ignores', async t => {
   const { context, file, registry, init } = setup(t);
@@ -141,6 +163,19 @@ for (const bytes of [
   });
 }
 
+test('init preserves malformed UTF-8 bytes and prints manual exclusions', async t => {
+  const bytes = Buffer.concat([Buffer.from('{"editor.fontFamily":"caf'), Buffer.from([0xe9]), Buffer.from('"}\n')]);
+  const { file, registry, init, messages } = setup(t, bytes);
+  await init();
+  assert.deepEqual(readFileSync(file), bytes);
+  assert.equal(json(registry).courses[0].vscodeSettings, undefined);
+  const output = messages.join('\n');
+  assert.match(output, /settings\.json.*unchanged/i);
+  assert.ok(output.includes('files.exclude'));
+  assert.ok(output.includes('search.exclude'));
+  for (const key of Object.keys(exclusions)) assert.ok(output.includes(`"${key}": true`));
+});
+
 test('init is byte and write idempotent for settings, actions and ownership', async t => {
   const { context, file, registry, init } = setup(t);
   await init();
@@ -231,6 +266,43 @@ test('init preserves settings changed after reservation and retries with the new
   assert.deepEqual(json(file), { author: true, ...expected });
   assert.deepEqual(json(registry).courses[0].vscodeSettings, expected);
 });
+
+for (const original of [undefined, '{"editor.fontSize":16}\n']) {
+  test(`init preserves an author save during the settings flush, originally ${original === undefined ? 'absent' : 'present'}`, async t => {
+    const { context, file, registry, init } = setup(t, original);
+    const authorEdit = '{"editor.fontSize":24,"files.exclude":{"**/.praxity":false}}\n';
+    const script = `
+      import fs from 'node:fs';
+      import assert from 'node:assert/strict';
+      import { syncBuiltinESMExports } from 'node:module';
+      const write = fs.writeFileSync;
+      let planted = false;
+      fs.writeFileSync = (file, bytes, options) => {
+        const result = write(file, bytes, options);
+        if (!planted && String(file).replaceAll('\\\\', '/').includes('/.vscode/.praxity-init-')) {
+          assert.equal(options.flush, true);
+          planted = true;
+          write(${JSON.stringify(file)}, ${JSON.stringify(authorEdit)});
+        }
+        return result;
+      };
+      syncBuiltinESMExports();
+      const { runCli } = await import(${JSON.stringify(new URL('../src/cli.mjs', import.meta.url).href)});
+      await assert.rejects(runCli(['init'], ${JSON.stringify({ cwd: context.cwd, home: context.home })},
+        { print: () => {} }), /VS Code settings changed during praxity init; retry/);
+      assert.ok(planted, 'Author save was planted after the durable temp-file flush');
+    `;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(read(file), authorEdit);
+    assert.equal(json(registry).courses[0].vscodeSettings, undefined);
+    assert.deepEqual(readdirSync(join(context.cwd, '.vscode')), ['settings.json']);
+    await init();
+    assert.equal(json(file)['editor.fontSize'], 24);
+    assert.equal(json(file)['files.exclude']['**/.praxity'], false);
+    assert.equal(json(registry).courses[0].vscodeSettings['files.exclude']['**/.praxity'], undefined);
+  });
+}
 
 test('init does not claim pending entries if the author changed settings after an interrupted write', async t => {
   const { file, registry, init, messages } = setup(t);
