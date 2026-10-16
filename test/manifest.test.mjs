@@ -6,6 +6,16 @@ import { examplePack, realPack, repository } from './helpers.mjs';
 import { validateManifest, validateReleaseManifest, installationPlan } from '../src/manifest.mjs';
 import { loadSchema, validateSchema } from '../src/schema.mjs';
 
+test('a tool can record its full source revision, with malformed revisions refused', () => {
+  const pack = examplePack(), studio = pack.tools.find(tool => tool.id === 'studio');
+  studio.sourceRevision = 'abcdef0123456789abcdef0123456789abcdef01';
+  assert.deepEqual(validateManifest(pack), []);
+  for (const value of ['abcdef01', 'ABCDEF0123456789ABCDEF0123456789ABCDEF01', '../not-a-revision', null]) {
+    studio.sourceRevision = value;
+    assert.ok(validateManifest(pack).some(error => error.includes('sourceRevision')));
+  }
+});
+
 test('real pack validates and every published archive has a complete contract', () => {
   const pack = realPack();
   assert.equal(pack.version, '0.1.1');

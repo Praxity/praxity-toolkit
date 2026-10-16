@@ -95,8 +95,52 @@ integrity against that trusted manifest.
 `setup [tool]` delegates to each installed tool's setup with its consent prompts.
 For example, `praxity setup check browser` forwards `setup browser` to Check.
 It never adds `--yes`. Every other subcommand and its arguments reach Studio
-unchanged. Rubato reserves `setup`, `doctor`, `version`, `rollback`,
+unchanged. Rubato reserves `setup`, `doctor`, `version`, `update`, `rollback`,
 `skills`, `init`, `check`, `trace`, `print` and `import`.
+
+## Update
+
+```sh
+~/.praxity/bin/praxity update
+```
+
+Save or copy unsaved text in every Studio tab, close the tabs, then stop the
+Studio action in T3 or press Ctrl+C in its terminal. Update refuses while a Studio process from an
+installed Rubato pack is running, because it cannot know whether a browser
+holds unsaved text. It sends no signals to Studio or other processes.
+The next Studio launch uses the new pack. A running process is never updated
+in place.
+
+The command follows the official stable channel configured in
+`src/update.mjs`, the latest published non-prerelease at `Praxity/rubato`.
+It accepts no alternate channel, manifest URL or digest flags. It downloads
+`pack.json`, `rubato-<version>.tar.gz` and `SHA256SUMS` from that release,
+checks both downloads against the checksum list, checks that the manifest
+matches the release tag and bootstrap, then runs that release's installer.
+The installer verifies runtime and tool archives and activates the pack with
+its existing ownership journal and atomic version switch. The previous pack
+remains available to `praxity rollback`. Downloads or checksum failures leave
+the old pack active. A doctor failure after activation returns a failure code
+with the new pack still active.
+
+Using this command trusts GitHub's HTTPS delivery and the people with release
+access to `Praxity/rubato` to supply executable bootstrap code and its manifest.
+A checksum from the same release checks integrity. It is not an independent
+signature and does not protect against a compromised release account.
+Manual installation of arbitrary manifests keeps the reviewed digest rules
+described under Install.
+
+Installation refreshes owned user skills. Update also runs the same skill
+refresh command at project scope in the current directory. No ownership record
+means no project skills are added. Modified owned files and unowned files are
+preserved; a refused refresh names the command to retry after resolving the
+reported file. A pack can be active even when a skill refresh refuses.
+Start a new host session if it needs to discover changed skills.
+
+`praxity version` reports the active pack and `studioSha`. New releases record
+the full tested Studio commit in the Studio tool's optional `sourceRevision` field.
+Older packs report the abbreviated SHA in a `-main.<sha>` Studio version, or
+`null` when the manifest does not identify one.
 
 ## Course actions in T3 Code
 
@@ -189,8 +233,8 @@ under Recovery, then rerun.
 
 Updates retain the previous version. Both version pointers change in one atomic
 rename. Rollback checks the destination pack and keeps the outgoing pack, even
-when its contents are damaged. Save and close Studio before switching or removing a pack. This scaffold
-does not detect dirty editor sessions.
+when its contents are damaged. Save and close Studio before switching or removing
+a pack. Rollback and uninstall do not detect dirty editor sessions.
 
 ```sh
 ~/.praxity/bin/praxity rollback
@@ -330,6 +374,15 @@ official URL, SHA-256, format and root stripping count. Its entry and notices
 paths are relative to the extracted root. The manifest selects Node-script or
 executable launchers. Tar archives must not escape their artifact root.
 Keep licences, Required Notices, dependencies and inventories in the payload.
+
+The stable update channel requires three release assets: `pack.json`,
+`rubato-<version>.tar.gz` and `SHA256SUMS`. The gzip tarball has an enclosing
+`rubato/` directory containing the reviewed `install.sh`, `package.json`, `src/`,
+`scripts/`, `schemas/`, `skills/`, `fixtures/` and the exact released `pack.json`.
+It contains regular files and directories only. The checksum list has one
+`<64 lowercase hex digits>  <filename>` line for each of the manifest and
+bootstrap, with no duplicate entries for either. Publish all assets together
+before marking the release latest; update refuses incomplete releases.
 
 All five darwin-arm64 tool archives and Studio's darwin-x64 archive are staged
 as assets of this repository's `v0.1.1` release, each with its SHA-256 in
