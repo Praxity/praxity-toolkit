@@ -114,7 +114,8 @@ export function installJournal(homeArgument, rootArgument) {
   };
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// Node resolves the entry module through directory aliases such as macOS /var.
+if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [operation, home, root, target, source, strip] = process.argv.slice(2);
   const journal = installJournal(home, root);
   if (operation === 'intent-copy') journal.copyIntent(target, source);

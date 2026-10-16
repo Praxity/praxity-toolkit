@@ -91,6 +91,14 @@ export function uninstallSkills(options) {
   return changeSkills({ ...options, remove: true });
 }
 
+export function findSkillsProject(cwd, home) {
+  const user = realpathSync(home);
+  for (let base = realpathSync(cwd); base !== user; base = dirname(base)) {
+    if (existsSync(join(base, '.praxity/toolkit-skills.json'))) return base;
+    if (dirname(base) === base) break;
+  }
+}
+
 // Regenerates the adapters already recorded in this scope, so a pack upgrade
 // adds and updates its skills. A scope without a record is left untouched.
 // A schema-1 claude record is reported, not migrated: migration moves the

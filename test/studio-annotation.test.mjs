@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runInNewContext } from 'node:vm';
+import { readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fixture, repository } from './helpers.mjs';
 import { resolveAnnotationSelector } from '../skills/studio-editor/scripts/resolve-annotation.mjs';
 
 // The browser document is the seam. Selector parsing belongs to the browser.
@@ -43,8 +47,8 @@ test('nested strong resolves its nearest block and field, with a short visible q
   const strong = element({}, 'Keep\n listening', field);
   assert.deepEqual(probe('strong', [strong], [block]), {
     status: 'candidate', pageUrl: 'http://localhost:41700/lesson.html',
-    nodeId: 'block-a', field: 'subject', role: 'heading', quote: 'Keep listening',
-    occurrences: [{ field: null, role: 'heading', quote: 'Keep listening', ancestorNodeIds: [] }],
+    nodeId: 'block-a', dataFieldAttribute: 'subject', ariaRole: 'heading', quote: 'Keep listening',
+    occurrences: [{ dataFieldAttribute: null, ariaRole: 'heading', quote: 'Keep listening', ancestorNodeIds: [] }],
     ancestorNodeIds: [],
   });
 });
@@ -86,7 +90,9 @@ test('legitimate repeated card projections are candidates with duplicate diagnos
 
 test('runtime-only IDs stay untrusted candidates for Studio to resolve or refuse', () => {
   const runtime = element({ 'data-node-id': 'runtime-42' }, 'Heading');
-  assert.equal(probe('h1', [runtime], [runtime]).status, 'candidate');
+  const result = probe('h1', [runtime], [runtime]);
+  assert.equal(result.status, 'candidate');
+  assert.equal(result.nodeId, 'runtime-42');
 });
 
 test('spoofed course HTML markers expose their enclosing ID and all occurrences', () => {
@@ -110,7 +116,7 @@ test('an element without a block marker refuses', () => {
   assert.equal(probe('p', [empty], [empty]).reason, 'missing-node-id');
 });
 
-test('selectors and IDs containing executable-looking text remain data', () => {
+test('DOM probe compares executable-looking IDs as data', () => {
   const selector = 'p[data-label="\\\"); globalThis.compromised = true; //"]';
   const block = element({ 'data-node-id': 'id"] , body *' }, 'Quoted');
   assert.equal(probe(selector, [block], [block]).nodeId, 'id"] , body *');
@@ -120,8 +126,8 @@ test('field hints stop at the nearest owning marker', () => {
   const outside = element({ 'data-field': 'unrelated', role: 'navigation' });
   const block = element({ 'data-node-id': 'block-a' }, 'Text', outside);
   const result = probe('p', [block], [block]);
-  assert.equal(result.field, null);
-  assert.equal(result.role, null);
+  assert.equal(result.dataFieldAttribute, null);
+  assert.equal(result.ariaRole, null);
 });
 
 test('quotes are bounded and capability fragments never leave the page', () => {
@@ -130,4 +136,161 @@ test('quotes are bounded and capability fragments never leave the page', () => {
   assert.equal(result.quote.length, 200);
   assert.equal(result.pageUrl, 'http://localhost:41700/lesson.html');
   assert.equal(JSON.stringify(result).includes('SECRET'), false);
+});
+
+const resolver = join(repository, 'skills/studio-editor/scripts/resolve-annotation.mjs');
+
+for (const selector of [
+  'p[data-label="quoted"]',
+  'p[data-label="\\backslash"]',
+  '</script><script>globalThis.compromised = true</script>',
+  '${globalThis.compromised = true}`$(echo unsafe)',
+  '"); globalThis.compromised = true; //',
+]) test(`packaged expression CLI round-trips selector as data: ${JSON.stringify(selector)}`, t => {
+  const { root } = fixture(t);
+  const input = join(root, 'selector.json');
+  writeFileSync(input, JSON.stringify(selector));
+  const cli = spawnSync(process.execPath, [resolver, '--expression', input], { encoding: 'utf8' });
+  assert.equal(cli.status, 0, cli.stderr);
+  assert.equal(cli.stderr, '');
+  assert.match(cli.stdout, /^\S[\s\S]*\S$/, 'preview_evaluate rejects trailing whitespace');
+  const block = element({ 'data-node-id': 'block-a' }, 'Selected');
+  const selectors = [];
+  const context = { compromised: false, document: {
+    location: { href: 'http://localhost:41700/lesson.html#session=SECRET' },
+    querySelectorAll(value) {
+      selectors.push(value);
+      return [block];
+    },
+  } };
+  const result = runInNewContext(cli.stdout, context);
+  assert.deepEqual(selectors, [selector, '[data-node-id]']);
+  assert.equal(result.nodeId, 'block-a');
+  assert.equal(context.compromised, false);
+  assert.equal(JSON.stringify(result).includes('SECRET'), false);
+});
+
+for (const type of ['file', 'dir', ...(process.platform === 'win32' ? ['junction'] : [])]) {
+  test(`expression CLI runs through a ${type} link`, t => {
+    const { root } = fixture(t);
+    const input = join(root, 'selector.json');
+    writeFileSync(input, '"h1"');
+    const link = join(root, type === 'file' ? 'resolver.mjs' : 'linked-skill');
+    try {
+      symlinkSync(type === 'file' ? resolver : join(repository, 'skills/studio-editor'), link, type);
+    } catch (error) {
+      if (['EPERM', 'EACCES', 'ENOSYS', 'ENOTSUP'].includes(error.code)) {
+        t.skip(`Cannot create ${type} link: ${error.code}`);
+        return;
+      }
+      throw error;
+    }
+    const entry = type === 'file' ? link : join(link, 'scripts/resolve-annotation.mjs');
+    const cli = spawnSync(process.execPath, [entry, '--expression', input], { encoding: 'utf8' });
+    assert.equal(cli.status, 0, cli.stderr);
+    assert.equal(cli.stderr, '');
+    assert.match(cli.stdout, /^\S[\s\S]*\S$/);
+    const heading = element({ 'data-node-id': 'heading-a' }, 'Heading');
+    const result = runInNewContext(cli.stdout, { document: {
+      location: { href: 'http://localhost/lesson.html' },
+      querySelectorAll(selector) {
+        assert.ok(['h1', '[data-node-id]'].includes(selector));
+        return [heading];
+      },
+    } });
+    assert.equal(result.nodeId, 'heading-a');
+  });
+}
+
+test('expression CLI never echoes parser errors or file contents', t => {
+  const { root } = fixture(t);
+  const input = join(root, 'selector.json');
+  writeFileSync(input, '{"instructions": "PRIVATE-SENTINEL"');
+  const cli = spawnSync(process.execPath, [resolver, '--expression', input], { encoding: 'utf8' });
+  assert.equal(cli.status, 1);
+  assert.equal(cli.stdout, '');
+  assert.equal(cli.stderr, 'Cannot build annotation expression. Use --expression <selector-file> with a readable JSON string or null.\n');
+});
+
+for (const input of ['null', '""']) test(`packaged expression CLI preserves missing selector ${input}`, t => {
+  const { root } = fixture(t);
+  const path = join(root, 'selector.json');
+  writeFileSync(path, input);
+  const cli = spawnSync(process.execPath, [resolver, '--expression', path], { encoding: 'utf8' });
+  assert.equal(cli.status, 0, cli.stderr);
+  const result = runInNewContext(cli.stdout, { document: { location: { href: 'http://localhost/' } } });
+  assert.equal(result.reason, 'missing-selector');
+});
+
+for (const input of ['{bad JSON', '{}', '[]', '42']) test(`expression CLI refuses invalid selector input ${input}`, t => {
+  const { root } = fixture(t);
+  const path = join(root, 'selector.json');
+  writeFileSync(path, input);
+  const cli = spawnSync(process.execPath, [resolver, '--expression', path], { encoding: 'utf8' });
+  assert.equal(cli.status, 1);
+  assert.equal(cli.stdout, '');
+  assert.match(cli.stderr, /Cannot build annotation expression/);
+});
+
+for (const args of [[], ['--expression'], ['--other', 'missing.json'], ['--expression', 'missing.json', 'extra'], ['--expression', 'missing.json']]) {
+  test(`expression CLI refuses missing file or unsupported arguments ${JSON.stringify(args)}`, () => {
+    const cli = spawnSync(process.execPath, [resolver, ...args], { encoding: 'utf8' });
+    assert.equal(cli.status, 1);
+    assert.equal(cli.stdout, '');
+    assert.match(cli.stderr, /Cannot build annotation expression/);
+  });
+}
+
+for (const args of [['--other'], ['--expression', 'extra']]) {
+  test(`expression CLI rejects unsupported arguments even with a readable selector ${JSON.stringify(args)}`, t => {
+    const { root } = fixture(t);
+    const input = join(root, 'selector.json');
+    writeFileSync(input, '\"p\"');
+    const cliArgs = args.length === 1 ? [args[0], input] : [args[0], input, args[1]];
+    const cli = spawnSync(process.execPath, [resolver, ...cliArgs], { encoding: 'utf8' });
+    assert.equal(cli.status, 1);
+    assert.equal(cli.stdout, '');
+    assert.match(cli.stderr, /Cannot build annotation expression/);
+  });
+}
+
+test('annotation CLI examples bind both dry run and write to UUID and whole-file revision', () => {
+  const skill = readFileSync(join(repository, 'skills/studio-editor/SKILL.md'), 'utf8');
+  const commands = skill.split('\n').filter(line => line.startsWith('praxity edit '));
+  assert.equal(commands.length, 2, 'document both the dry run and guarded write');
+  for (const command of commands) {
+    const args = command.split(/\s+/);
+    assert.equal(args[args.indexOf('--at') + 1], '<uuid>');
+    assert.equal(args[args.indexOf('--expect-revision') + 1], '<fileRevision>');
+    for (const forbidden of ['--find', '--page', '--block', '--line']) assert.equal(args.includes(forbidden), false);
+  }
+  assert.ok(commands[0].includes('--dry-run'));
+  assert.equal(commands[1].includes('--dry-run'), false);
+  assert.match(skill, /For annotation edits, forbid `--find`, `--page`, `--block` and `--line`/);
+  // Check all prose too, so an added positional-address exception cannot pass.
+  for (const flag of ['--find', '--page', '--block', '--line']) {
+    assert.equal(skill.match(new RegExp(`${flag}\\b`, 'g'))?.length, 1, `${flag} belongs only in the prohibition`);
+  }
+});
+
+test('CLI annotation contract joins exact IDs and files and limits fields to supported kinds', () => {
+  const skill = readFileSync(join(repository, 'skills/studio-editor/SKILL.md'), 'utf8').replace(/\s+/g, ' ');
+  assert.ok(skill.includes('`nodeId` exactly equals the picked live `data-node-id` and whose `file` exactly equals the annotated page\'s lesson source file.'));
+  assert.ok(skill.includes('Join only on those two values, never by text, DOM order or positional address.'));
+  assert.ok(skill.includes('| `heading` | `subject` |'));
+  assert.ok(skill.includes('| `page`, for its page title only | `subject` |'));
+  assert.ok(skill.includes('| Every other kind, including callouts, paragraphs, captions and feedback | Refuse until Studio exposes its field binding. |'));
+  assert.ok(skill.includes('every-occurrence rule in CLI mode too; unexplained or inconsistent repeats refuse.'));
+  assert.ok(skill.includes('Require the replaced source text to contain the picked live quote, allowing only inline markup differences. A mismatch refuses.'));
+  const examples = readFileSync(join(repository, 'skills/studio-editor/references/annotation-examples.md'), 'utf8');
+  assert.ok(examples.includes('Refuse without writing until Studio exposes a caption field binding.'));
+});
+
+test('annotation launch example preserves the admitted preview path and excludes capabilities from evidence', () => {
+  const skill = readFileSync(join(repository, 'skills/studio-editor/SKILL.md'), 'utf8').replace(/\s+/g, ' ');
+  const canvasPath = '/canvas/preview/demo/course/r/rev/lesson.html';
+  assert.ok(skill.includes(`For example, \`${canvasPath}\` gives \`/launch?canvas=${encodeURIComponent(canvasPath.slice('/canvas'.length))}\``));
+  assert.ok(skill.includes('Keep them out of saved evidence and logs, including resolver `pageUrl` results.'));
+  assert.ok(skill.includes("binding's raw inline source"));
+  assert.ok(skill.includes('a mismatch beyond inline markup refuses.'));
 });
