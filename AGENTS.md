@@ -1,11 +1,11 @@
-# Toolkit rules
+# Rubato rules
 
 Read `AGENTS.local.md` when present. This scaffold has no glossary or ADRs yet.
 `pack.json` owns release pins. `schemas/` owns wire formats. Keep bootstrap parsing
 limited to finding Node; use the schema validator once the pinned Node runs.
 
 Tool repositories own their setup, doctors, business rules and skills. Collect
-their packaged skills without rewriting them. Toolkit skills live in `skills/`.
+their packaged skills without rewriting them. Rubato skills live in `skills/`.
 Change adapters through the generator, then update and review the golden files.
 
 Use `node --test` and `npm run validate`. Installer tests use local archives and

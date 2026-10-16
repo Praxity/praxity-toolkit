@@ -1,10 +1,10 @@
 #!/bin/sh
-# One-command trial on an Apple Silicon Mac: download the toolkit, install the
+# One-command trial on an Apple Silicon Mac: download Rubato, install the
 # pack, run the doctor, then open Studio's editor on the bundled sample course.
 #
-#   curl -fsSL https://raw.githubusercontent.com/Praxity/praxity-toolkit/main/try.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/Praxity/rubato/main/try.sh | sh
 #
-# It only touches ~/praxity-toolkit-main (the downloaded toolkit), ~/.praxity
+# It only touches ~/rubato-main (the downloaded Rubato checkout), ~/.praxity
 # (the installed pack) and a copy of the sample course in ~/praxity-trial-course.
 # Optional downloads (Check's browser, Java, veraPDF) need consent, so run
 # `~/.praxity/bin/praxity setup check` yourself afterwards if you want them.
@@ -14,15 +14,15 @@ set -eu
 # that reads stdin would swallow the rest of the script, so the body sits in a
 # function that runs only once sh has read all of it, and children get /dev/null.
 main() {
-  toolkit="$HOME/praxity-toolkit-main"
+  toolkit="$HOME/rubato-main"
   course="$HOME/praxity-trial-course"
   praxity="$HOME/.praxity/bin/praxity"
 
   step() { printf '\n== %s\n' "$1"; }
 
-  step "Downloading the toolkit to $toolkit"
+  step "Downloading Rubato to $toolkit"
   rm -rf "$toolkit"
-  curl -fsSL https://github.com/Praxity/praxity-toolkit/archive/refs/heads/main.tar.gz | tar xz -C "$HOME"
+  curl -fsSL https://github.com/Praxity/rubato/archive/refs/heads/main.tar.gz | tar xz -C "$HOME"
 
   step "Installing the pack and checking it (no administrator rights needed)"
   # install.sh ends with the doctor and returns its verdict. Studio can still be

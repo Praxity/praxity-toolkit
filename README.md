@@ -1,6 +1,6 @@
-# Praxity toolkit
+# Rubato
 
-Install Praxity's local tools for learning designers in your home folder.
+Rubato installs Praxity's tools and skills for learning designers into agent hosts.
 On an Apple Silicon or Intel Mac, one install gives you five working tools:
 
 - Studio edits a course in the browser or in T3's preview, and exports it as HTML or PDF.
@@ -16,7 +16,7 @@ or MCP server. `pack.json` pins every archive by URL and SHA-256.
 Studio reads grammar 4 courses; convert grammar 3 courses first.
 Pack 0.1.1 pins Studio CLI `0.3.0-main.92e21573` and Check
 `0.6.0-main.993069cc`. All macOS tool archives download from the `v0.1.1`
-toolkit release after publication.
+Rubato release after publication.
 The installer supports Apple Silicon and Intel macOS and chooses native arm64
 runtimes when launched through Rosetta. Studio has an archive for each
 architecture. Check, Trace, Print and Import share portable archives across both.
@@ -31,14 +31,14 @@ tool transcript.
 
 ## Try it
 
-On an Apple Silicon or Intel Mac, one command downloads the toolkit, installs the pack, runs
+On an Apple Silicon or Intel Mac, one command downloads Rubato, installs the pack, runs
 the doctor and opens Studio's editor in Safari on a copy of the sample course:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Praxity/praxity-toolkit/main/try.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Praxity/rubato/main/try.sh | sh
 ```
 
-Read [`try.sh`](try.sh) first if you prefer; it touches only `~/praxity-toolkit-main`,
+Read [`try.sh`](try.sh) first if you prefer; it touches only `~/rubato-main`,
 `~/.praxity` and `~/praxity-trial-course`. Press Ctrl+C to stop Studio.
 
 ## Install
@@ -47,8 +47,8 @@ Download this repository, review `install.sh` and `pack.json`, then run the
 installer from that folder on an Apple Silicon or Intel Mac:
 
 ```sh
-curl -fsSL https://github.com/Praxity/praxity-toolkit/archive/refs/heads/main.tar.gz | tar xz
-cd praxity-toolkit-main
+curl -fsSL https://github.com/Praxity/rubato/archive/refs/heads/main.tar.gz | tar xz
+cd rubato-main
 sh install.sh
 ```
 
@@ -95,7 +95,7 @@ integrity against that trusted manifest.
 `setup [tool]` delegates to each installed tool's setup with its consent prompts.
 For example, `praxity setup check browser` forwards `setup browser` to Check.
 It never adds `--yes`. Every other subcommand and its arguments reach Studio
-unchanged. The toolkit reserves `setup`, `doctor`, `version`, `rollback`,
+unchanged. Rubato reserves `setup`, `doctor`, `version`, `rollback`,
 `skills`, `init`, `check`, `trace`, `print` and `import`.
 
 ## Course actions in T3 Code
@@ -194,7 +194,7 @@ does not detect dirty editor sessions.
 
 ```sh
 ~/.praxity/bin/praxity rollback
-sh /absolute/path/to/praxity-toolkit/install.sh uninstall
+sh /absolute/path/to/rubato/install.sh uninstall
 ```
 
 Uninstall removes owned pack versions, staged downloads and its unchanged
@@ -204,7 +204,7 @@ are refused before removal. Host skills retain their separate ownership record.
 
 ## Skills
 
-The toolkit owns `skills/install-praxity` and `skills/studio-editor`. Each tool
+Rubato owns `skills/install-praxity` and `skills/studio-editor`. Each tool
 owns the skill and references shipped in its archive. The generator collects
 installed tools' skill folders without rewriting them.
 
@@ -222,14 +222,14 @@ Both adapters may coexist in one scope. Installing another adapter retains the
 first. Each host gets one copy per skill. A same-host copy in the other scope,
 a legacy Codex skill in `.codex/skills`, or an unowned Praxity plugin blocks a
 competing installation. Unowned skills for a different host are preserved.
-The toolkit does not edit host settings, shell profiles or AGENTS files.
+Rubato does not edit host settings, shell profiles or AGENTS files.
 
 Ownership and recovery intents live in `.praxity/toolkit-skills.json`. Existing
 single-host records migrate automatically. The former owned Claude plugin moves
 to plain skills, and its unchanged files are removed. Modified or unowned files
 are preserved and stop migration or removal. Install recreates owned files you
 deleted or moved away, and so does the next pack install, because it refreshes
-skills. To stop using the toolkit's skills for a host, run
+skills. To stop using Rubato's skills for a host, run
 `praxity skills uninstall` with that `--host`; it tolerates files you already
 deleted. Stop active host sessions before
 migrating the plugin, then start a new session without its old `--plugin-dir`.
@@ -278,7 +278,7 @@ praxity skills install --host codex --scope user
 Files land in `~/.agents/skills/<name>/SKILL.md`. With `--scope project`, they
 land in `.agents/skills` under the current project. Codex also scans parent
 folders up to the repository root. Start Codex in the project, run `/skills`
-or type `$`, and confirm both toolkit skill names appear. Ask it to list the
+or type `$`, and confirm both Rubato skill names appear. Ask it to list the
 available Praxity skills before invoking one. See [Codex skill discovery](https://learn.chatgpt.com/docs/build-skills).
 
 ### Claude Code
@@ -312,13 +312,13 @@ this pack's skills, or holding changed copies, is `partial`; its message names
 those skills and its fix is the `praxity skills install` command that refreshes
 them. Install keeps a copy you edited, so for those the fix first asks you to
 move it out of the skills folder. `launcher.path` reports whether the first
-`praxity` on PATH is the toolkit launcher.
+`praxity` on PATH is the Rubato launcher.
 Probes time out after 30 seconds and cap captured output at 1 MiB.
 Temporary probe documents are removed. It does not launch an editor or run a
 full Check audit.
 
 Check currently exposes refusal in setup text rather than persistent doctor
-state. The toolkit records Check's explicit refusal line from setup run through
+state. Rubato records Check's explicit refusal line from setup run through
 `praxity` in `~/.praxity/toolkit-state/declined.json`, outside pack folders.
 This per-user state survives updates, rollback and uninstall. It cannot see a refusal from Check run on its own.
 A component that works counts as ok, even if you refused it earlier.
@@ -339,6 +339,9 @@ Trace and Print asset names retain `darwin-arm64` for compatibility; their
 payload inventories declare them portable. Other platform entries stay
 `unpublished`, with the reason recorded beside each.
 
+Published pack manifests retain their original archive URLs. GitHub redirects
+those URLs to this repository after the rename.
+
 Node 24.21.0 hashes came from its [signed official checksum list](https://nodejs.org/dist/v24.21.0/SHASUMS256.txt.asc),
 verified with release key `5BE8A3F6C8A5C01D106C0AD820B1A390B168D356` listed in
 the [Node release instructions](https://github.com/nodejs/node/blob/main/README.md#release-keys).
@@ -346,14 +349,14 @@ Typst 0.15.1 hashes came from [official release asset metadata](https://api.gith
 `docs/provenance/` preserves the signed Node list, public key and extracted
 checksums. Neither origin settles signing, Gatekeeper or clean-Mac acceptance.
 
-The toolkit's own scripts, skills and adapters are MIT-licensed (see `LICENSE`).
+Rubato's own scripts, skills and adapters are MIT-licensed (see `LICENSE`).
 The tools it installs keep their own licences: Studio, Check, Trace, Print and
 Import are under PolyForm Perimeter 1.0.1, with their third-party notices inside
 each archive. Installing or adapting a tool does not relicense it.
 
 ## Paste into your agent
 
-> Use the reviewed Praxity toolkit checkout to install its pinned manifest on
+> Use the reviewed Rubato checkout to install its pinned manifest on
 > this Apple Silicon or Intel Mac. Read its install-praxity skill first. Show the concrete
 > downloads, licences and unpublished blockers and obtain consent. Run only its
 > reviewed bootstrap. Keep tool setup consent prompts visible, run doctor, and

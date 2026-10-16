@@ -59,7 +59,7 @@ export async function runCli(args, context, dependencies = {}) {
     if (rest[0] === 'refresh') {
       const result = refreshSkills({ base: values.scope === 'user' ? context.home : context.cwd, outputs });
       if (result.legacyHost) print(`Skills at ${values.scope} scope use an older ownership record and were not refreshed. Stop host sessions, then run praxity skills install --host ${result.legacyHost} --scope ${values.scope}.`);
-      else print(result.hosts.length ? `Refreshed ${result.hosts.join(', ')} skills at ${values.scope} scope. Restart the host to load them.` : `No toolkit skills are installed at ${values.scope} scope.`);
+      else print(result.hosts.length ? `Refreshed ${result.hosts.join(', ')} skills at ${values.scope} scope. Restart the host to load them.` : `No Rubato skills are installed at ${values.scope} scope.`);
       return 0;
     }
     const result = (rest[0] === 'install' ? installSkills : uninstallSkills)({ base: values.scope === 'user' ? context.home : context.cwd,

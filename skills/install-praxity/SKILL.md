@@ -1,16 +1,16 @@
 ---
 name: install-praxity
-description: Install or recover the local Praxity toolkit, then check its tools and install the selected host adapter.
+description: Install or recover Rubato, then check its tools and install the selected host adapter.
 ---
 
-Use the reviewed toolkit checkout and its `pack.json`. The first supported path
+Use the reviewed Rubato checkout and its `pack.json`. The first supported path
 is local T3 desktop on Apple Silicon macOS. If the checkout or reviewed bootstrap
 is unavailable, stop and obtain it from the owner. Do not invent a download URL.
 
 1. Read the checkout's README and manifest. Show the pack version, each published
    download's purpose, version, URL and licence, and the unpublished tool reasons.
    Explain the per-user version directory and launchers. Obtain consent for these
-   concrete downloads before running `sh /absolute/path/to/toolkit/install.sh`.
+   concrete downloads before running `sh /absolute/path/to/rubato/install.sh`.
 2. Read the result. On failure, use the reported recovery command. Do not change
    installation steps, escalate privileges or disable OS protections. A manifest
    override is a trust decision; use only the user's reviewed manifest.
@@ -42,9 +42,9 @@ the host and model provider control what they transmit.
 
 Recovery commands, after resolving the reported cause:
 
-- Retry: `sh /absolute/path/to/toolkit/install.sh`. Verified downloads are reused.
+- Retry: `sh /absolute/path/to/rubato/install.sh`. Verified downloads are reused.
 - Revert an update: `~/.praxity/bin/praxity rollback`.
-- Remove the toolkit: `sh /absolute/path/to/toolkit/install.sh uninstall`.
+- Remove Rubato: `sh /absolute/path/to/rubato/install.sh uninstall`.
 
 Close Studio and save work before switching or removing a pack. A live editor
 must finish before its runtime directory is removed.

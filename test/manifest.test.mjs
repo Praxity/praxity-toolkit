@@ -23,7 +23,7 @@ test('real pack validates and every published archive has a complete contract', 
   }
 });
 
-test('real pack pins every published tool archive to its toolkit release', () => {
+test('real pack preserves every published tool archive URL from v0.1.1', () => {
   const pack = realPack();
   const prefix = `https://github.com/Praxity/praxity-toolkit/releases/download/v${pack.version}/`;
   for (const tool of pack.tools) {

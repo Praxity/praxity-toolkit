@@ -119,7 +119,7 @@ for (const inventory of ['intact', 'damaged', 'unmanaged']) test(`past refusal c
   assert.equal(report.exitCode, 1);
 });
 
-test('doctor names the PATH line when the toolkit launcher is not first on PATH, without failing', t => {
+test('doctor names the PATH line when the Rubato launcher is not first on PATH, without failing', t => {
   const context = prepared(t);
   const bin = join(context.home, '.praxity/bin'), other = join(context.root, 'other bin');
   mkdirSync(bin, { recursive: true }); mkdirSync(other);
@@ -135,7 +135,7 @@ test('doctor names the PATH line when the toolkit launcher is not first on PATH,
   writeFileSync(join(other, 'praxity'), '#!/bin/sh\n', { mode: 0o755 });
   const shadowed = path(other, bin);
   assert.equal(shadowed.status, 'not-installed');
-  assert.match(shadowed.message, /^praxity on PATH runs .*other bin.*, not the toolkit launcher\./);
+  assert.match(shadowed.message, /^praxity on PATH runs .*other bin.*, not the Rubato launcher\./);
   assert.equal(path(bin, other).status, 'ok');
 });
 
@@ -166,7 +166,7 @@ for (const bytes of ['null', '{"files":']) test(`an unreadable skills ownership 
   const item = result.items.find(item => item.id === 'host.codex.user');
   assert.equal(item.status, 'failed');
   assert.equal(item.message, `Unreadable skills ownership record: ${join(context.home, '.praxity/toolkit-skills.json')}`);
-  assert.equal(item.fix, 'Restore the record from a backup, or move it and the toolkit skills in .agents/skills aside, then run praxity skills install --host codex --scope user');
+  assert.equal(item.fix, 'Restore the record from a backup, or move it and the Rubato skills in .agents/skills aside, then run praxity skills install --host codex --scope user');
   assert.equal(result.items.find(item => item.id === 'host.codex.project').status, 'not-installed');
   assert.equal(result.exitCode, 1);
 });

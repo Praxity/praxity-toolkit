@@ -152,7 +152,7 @@ if [ "$ACTION" = uninstall ]; then
   owned_remove_tree "$ROOT/.install-lock"
   trap - EXIT
   if [ -n "${ACTIVE_VERSION:-}" ]; then owned_remove_tree "$ROOT/$ACTIVE_VERSION"; fi
-  printf '%s\n' 'Toolkit removed. Host skills and optional tool components remain installed and are tracked separately.'
+  printf '%s\n' 'Rubato removed. Host skills and optional tool components remain installed and are tracked separately.'
   exit 0
 fi
 
