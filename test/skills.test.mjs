@@ -32,7 +32,7 @@ function legacyInstall(context, host) {
 
 for (const host of ['t3', 'claude', 'codex']) test(`schema-1 ${host} ownership migrates to an adapter set without losing owned references`, t => {
   const { context } = fixture(t);
-  const references = join(context.root, 'skills/studio-editor/references'); mkdirSync(references);
+  const references = join(context.root, 'skills/studio-editor/references'); mkdirSync(references, { recursive: true });
   writeFileSync(join(references, 'extra.txt'), 'PACKAGED REFERENCE');
   legacyInstall(context, host);
   const outputs = outputsFor(context);
@@ -484,7 +484,7 @@ test('doctor reports a changed toolkit skill as partial', async t => {
 test('doctor reports an edited reference in a missing skill and its stated CLI repair preserves the edit', async t => {
   const { context } = fixture(t), quiet = { print() {} };
   const reference = 'studio-editor/references/user-guide.txt';
-  mkdirSync(join(context.root, 'skills/studio-editor/references'));
+  mkdirSync(join(context.root, 'skills/studio-editor/references'), { recursive: true });
   writeFileSync(join(context.root, 'skills', reference), 'Packaged guide.\n');
   await runCli(['skills', 'install', '--host', 'claude', '--scope', 'user'], context, quiet);
   const skill = join(context.home, '.claude/skills/studio-editor');
@@ -511,7 +511,7 @@ test('doctor reports an edited reference in a missing skill and its stated CLI r
 test('doctor reports owned-file edits even when a skill matches the current pack', async t => {
   const { context } = fixture(t), quiet = { print() {} };
   const source = join(context.root, 'skills/studio-editor/references');
-  mkdirSync(source);
+  mkdirSync(source, { recursive: true });
   writeFileSync(join(source, 'guide.txt'), 'Original guide.\n');
   await runCli(['skills', 'install', '--host', 'claude', '--scope', 'user'], context, quiet);
   const current = 'Current guide with local edits.\n';
