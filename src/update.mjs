@@ -100,7 +100,7 @@ export function installVerifiedPack(context, { bootstrap, manifest }, dependenci
     const installed = run({ command: 'sh', args: [join(bootstrap, 'install.sh'), '--manifest-sha256', digest(manifest), '--platform', context.state.platform], env: context.env }, { stdio: 'inherit', timeout: undefined });
     if (installed.error) throw new Error(installed.error);
     const activeFile = join(context.home, '.praxity/toolkit/active');
-    if (!existsSync(activeFile) || readFileSync(activeFile, 'utf8').split('\n')[0] !== pack.version) throw new Error(`Release installer failed (${installed.code}). Nothing activated; rerun praxity update after resolving the reported error.`);
+    if (!existsSync(activeFile) || readFileSync(activeFile, 'utf8').split('\n')[0] !== pack.version) throw new Error(`Release installer failed (${installed.code}). Nothing activated; rerun after resolving the reported error. ${installed.stderr ?? ''}`);
     let code = installed.code ?? 1;
     const project = findSkillsProject(context.cwd, context.home);
     if (project) {

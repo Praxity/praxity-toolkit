@@ -350,6 +350,7 @@ capture "$LAUNCHER_HASH" sha256 "$BIN/praxity"
 owned_publish "$LAUNCHER_HASH" "$ROOT/.launcher-sha256"
 CURRENT=$(sed -n '1p' "$ROOT/active" 2>/dev/null || true)
 PREVIOUS=$(sed -n '2p' "$ROOT/active" 2>/dev/null || true)
+OLD_PREVIOUS=$PREVIOUS
 if [ -n "$CURRENT" ] && [ "$CURRENT" != "$VERSION" ]; then
   owned_version "$CURRENT"
   PREVIOUS=$CURRENT
@@ -357,14 +358,29 @@ fi
 activate "$VERSION" "$PREVIOUS"
 LEDGER_NODE="$ROOT/$VERSION/runtimes/node/$NODE_ENTRY"
 owned_remove_tree "$BOOTSTRAP"
+# Certify the new activation before refreshing any host's skills.
+if ! "$BIN/praxity" doctor; then
+  if [ -n "$CURRENT" ]; then
+    activate "$CURRENT" "$OLD_PREVIOUS"
+    die "Activation failed; rolled back to pack $CURRENT. Resolve the doctor error and rerun."
+  fi
+  owned_remove_tree "$ROOT/active"
+  owned_remove_tree "$BIN/praxity"
+  owned_remove_tree "$ROOT/.launcher-sha256"
+  die 'Activation failed; rolled back to no active pack. Resolve the doctor error and rerun.'
+fi
 # A new pack can add or change skills. Refresh only host adapters the user
 # installed in their home; their ownership record names the files.
 # Packs before 0.1.0 have no refresh command. Reactivating one, as a rerun
 # of its installer does, leaves host skills as they are.
+REFRESH_CODE=0
 if grep -q 'refreshSkills' "$ROOT/$VERSION/src/cli.mjs"; then
-  "$BIN/praxity" skills refresh --scope user || printf '%s\n' 'Host skills were not refreshed; the pack is active. Resolve the file named above, then run praxity skills refresh --scope user. Their ownership record is ~/.praxity/toolkit-skills.json.' >&2
+  "$BIN/praxity" skills refresh --scope user || {
+    printf '%s\n' 'Host skills were not refreshed; the pack is active. Resolve the file named above, then run praxity skills refresh --scope user. Their ownership record is ~/.praxity/toolkit-skills.json.' >&2
+    REFRESH_CODE=1
+  }
 fi
 printf 'Installed pack %s. Add this line to PATH yourself:\n' "$VERSION"
 printf 'export PATH="$HOME/.praxity/bin:$PATH"\n'
 printf '%s\n' 'Close Studio before rollback or uninstall. Optional components require praxity setup consent.'
-"$BIN/praxity" doctor
+exit "$REFRESH_CODE"
