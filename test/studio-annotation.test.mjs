@@ -254,13 +254,16 @@ for (const args of [['--other'], ['--expression', 'extra']]) {
   });
 }
 
-test('annotation CLI examples bind both dry run and write to UUID and whole-file revision', () => {
+test('annotation CLI examples bind rendered field, JSON text and whole-file revision', () => {
   const skill = readFileSync(join(repository, 'skills/studio-editor/SKILL.md'), 'utf8');
   const commands = skill.split('\n').filter(line => line.startsWith('praxity edit '));
   assert.equal(commands.length, 2, 'document both the dry run and guarded write');
   for (const command of commands) {
     const args = command.split(/\s+/);
-    assert.equal(args[args.indexOf('--at') + 1], '<uuid>');
+    assert.equal(args[3], 'setText');
+    assert.equal(args[args.indexOf('--at') + 1], '<rendered-nodeId>');
+    assert.ok(command.includes('--arg field=<field>'));
+    assert.ok(command.includes('--arg text=<json-string>'));
     assert.equal(args[args.indexOf('--expect-revision') + 1], '<fileRevision>');
     for (const forbidden of ['--find', '--page', '--block', '--line']) assert.equal(args.includes(forbidden), false);
   }
@@ -273,17 +276,26 @@ test('annotation CLI examples bind both dry run and write to UUID and whole-file
   }
 });
 
-test('CLI annotation contract joins exact IDs and files and limits fields to supported kinds', () => {
+test('CLI annotation contract uses admitted text fields for every kind and refuses missing evidence', () => {
   const skill = readFileSync(join(repository, 'skills/studio-editor/SKILL.md'), 'utf8').replace(/\s+/g, ' ');
+  assert.ok(skill.includes('`praxity inspect . --blocks --json`'));
+  assert.ok(skill.includes('exactly one `textFields[]` entry'));
   assert.ok(skill.includes('`nodeId` exactly equals the picked live `data-node-id` and whose `file` exactly equals the annotated page\'s lesson source file.'));
   assert.ok(skill.includes('Join only on those two values, never by text, DOM order or positional address.'));
-  assert.ok(skill.includes('| `heading` | `subject` |'));
-  assert.ok(skill.includes('| `page`, for its page title only | `subject` |'));
-  assert.ok(skill.includes('| Every other kind, including callouts, paragraphs, captions and feedback | Refuse until Studio exposes its field binding. |'));
+  assert.ok(skill.includes('Use the returned `field` for every admitted kind.'));
+  assert.ok(skill.includes('Missing `textFields`, conflicting or multiple matches refuse.'));
+  assert.ok(skill.includes('A generated title uses its rendered `nodeId`; never substitute `ownerId` in `--at`.'));
   assert.ok(skill.includes('every-occurrence rule in CLI mode too; unexplained or inconsistent repeats refuse.'));
   assert.ok(skill.includes('Require the replaced source text to contain the picked live quote, allowing only inline markup differences. A mismatch refuses.'));
+  assert.ok(skill.includes('expectedText: binding.text'));
+  assert.equal(skill.includes('| Inspected `kind` |'), false);
+  assert.equal(skill.includes('Current canvas bindings support only'), false);
+  assert.equal(skill.includes('A generated title whose rendered ID has no exact inspect match also refuses'), false);
+  assert.match(skill, /Minimum Studio CLI build: `0\.3\.0-main\.[a-f0-9]{8}`/);
   const examples = readFileSync(join(repository, 'skills/studio-editor/references/annotation-examples.md'), 'utf8');
-  assert.ok(examples.includes('Refuse without writing until Studio exposes a caption field binding.'));
+  assert.ok(examples.includes('Join fresh `inspect --blocks --json` output\'s `textFields[]`'));
+  assert.ok(examples.includes('Use its returned field for paragraphs, list items, choice options, feedback and captions when admitted.'));
+  assert.ok(examples.includes('If no caption binding is returned, refuse without writing.'));
 });
 
 test('annotation launch example preserves the admitted preview path and excludes capabilities from evidence', () => {

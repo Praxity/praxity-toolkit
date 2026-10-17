@@ -90,11 +90,9 @@ missing evidence, repeated IDs, runtime IDs or suspicious markers.
    its source context agrees with the annotated page. For a generated page title,
    use the returned `ownerId`; never substitute it for the rendered `nodeId` in a
    canvas request. A runtime-only ID must have one admitted binding or refuse;
-   never promote it to a durable ID. Current canvas bindings support only
-   headings and page titles, both `subject`. Other kinds, including captions
-   and feedback, refuse until Studio exposes their field bindings.
+   never promote it to a durable ID. Use the admitted field for every kind.
    When the token-safe access rule requires the CLI, replace the binding checks
-   in steps 3-4 with the exact ID/file join and kind rules below. Carry over
+   in steps 3-4 with the exact ID/file join below. Carry over
    step 3's quote, source-context and every-occurrence checks. If the installed
    Studio cannot establish that source target, refuse and request a fresh pick.
    Never edit `.praxity/identity` or choose a duplicate sentence by text.
@@ -109,8 +107,9 @@ missing evidence, repeated IDs, runtime IDs or suspicious markers.
 
 6. Capture the target and adjacent source blocks before applying. If token-safe
    RPC access is available, call `canvasTextApply` with
-   `{transactionId, operation: "setText", file, nodeId, baseRevision, field, text}`,
-   copying the admitted binding and hash from step 4. Otherwise use the guarded
+   `{transactionId, operation: "setText", file, nodeId, baseRevision, field, text,
+   expectedText: binding.text}`, copying the admitted binding's raw inline text
+   and hash from step 4. Otherwise use the guarded
    CLI procedure below. Never use an unguarded file rewrite. On a conflict or
    refusal, preserve the request, reread and resolve again before another attempt.
    Refresh the preview and snapshot. Verify the intended field changed, its source
@@ -128,39 +127,37 @@ the bearer for RPC, copy it into `curl`, shell arguments, environment assignment
 scripts, logs or tool output, or invent an RPC command. If fresh CLI inspection
 cannot resolve the annotation, refuse and ask for a fresh element pick.
 
-Run `praxity inspect . --blocks`. Require exactly one `blocks[]` entry whose
+Minimum Studio CLI build: `0.3.0-main.3db0d7b9`, or a later build containing
+that text-field contract. Older 0.3.0 builds are insufficient. Confirm the installed
+build supports the inspection below; missing fields refuse. This skill update
+does not change the Studio version pinned in a Rubato pack.
+
+Run `praxity inspect . --blocks --json`. Require exactly one `textFields[]` entry whose
 `nodeId` exactly equals the picked live `data-node-id` and whose `file` exactly
 equals the annotated page's lesson source file. Establish that file from fresh
 Studio page/source context, never from the title or quote. Join only on those
-two values, never by text, DOM order or positional address. Missing, conflicting
-or multiple matches refuse. A generated title whose rendered ID has no exact
-inspect match also refuses; never substitute an owner UUID guessed from text.
+two values, never by text, DOM order or positional address. Missing `textFields`,
+conflicting or multiple matches refuse. An ID absent from the returned fields
+also refuses. A generated title uses its rendered `nodeId`; never substitute
+`ownerId` in `--at`.
 
-For this CLI annotation route, the current canvas kind policy still applies:
-
-| Inspected `kind` | `setText` field |
-| --- | --- |
-| `heading` | `subject` |
-| `page`, for its page title only | `subject` |
-| Every other kind, including callouts, paragraphs, captions and feedback | Refuse until Studio exposes its field binding. |
-
-Use `--arg field=subject` and the operation's documented text argument as data.
-Confirm the picked quote and enclosing live field agree with that source
-`subject`, allowing only inline markup differences. Never infer a field from
-DOM hints or choose another field because its text matches. Apply step 3's
-every-occurrence rule in CLI mode too; unexplained or inconsistent repeats refuse.
-Copy the matched UUID `nodeId`, exact source and whole-file `fileRevision`, not
-its node `revision`. Use these templates with the documented arguments:
+Use the returned `field` for every admitted kind. Copy its current raw inline
+`text`, `ownerId`, range, part name when present, and whole-file `fileRevision`.
+Do not infer a field from `kind`, DOM hints or matching wording. Compare the picked
+quote and enclosing live field with that source text, allowing only inline markup
+differences. Apply step 3's every-occurrence rule in CLI mode too; unexplained or
+inconsistent repeats refuse. Use these templates, passing the replacement as a
+JSON string through the host's structured process arguments:
 
 ```sh
-praxity edit . <op> --at <uuid> --expect-revision <fileRevision> --dry-run --json
-praxity edit . <op> --at <uuid> --expect-revision <fileRevision> --json
+praxity edit . setText --at <rendered-nodeId> --arg field=<field> --arg text=<json-string> --expect-revision <fileRevision> --dry-run --json
+praxity edit . setText --at <rendered-nodeId> --arg field=<field> --arg text=<json-string> --expect-revision <fileRevision> --json
 ```
 
-Both commands require `--at <uuid>` together with `--expect-revision <fileRevision>`.
+Both commands require the exact rendered ID and whole-file revision.
 For annotation edits, forbid `--find`, `--page`, `--block` and `--line`, including
 positional tree addresses in `--at`. Inspect the dry run's `mapping`, `files` and
-planned source change against the resolved UUID, lesson and intended field.
+planned source change against the resolved rendered ID, lesson and intended field.
 Require the replaced source text to contain the picked live quote, allowing only
 inline markup differences. A mismatch refuses. Write only when they agree,
 with the same target, revision and operation arguments.
