@@ -35,7 +35,6 @@ function newer(version, current) {
 
 export async function updatePack(context, dependencies = {}) {
   const fetchRelease = dependencies.fetch ?? fetch, run = dependencies.updateProcess ?? probeProcess;
-  const print = dependencies.print ?? console.log;
   assertStudioClosed(context, run);
   const download = async url => {
     const response = await fetchRelease(url, { signal: AbortSignal.timeout(30_000), headers: url === officialReleaseChannel.metadata ? { Accept: 'application/vnd.github+json' } : undefined });
@@ -98,18 +97,27 @@ export function installVerifiedPack(context, { bootstrap, manifest }, dependenci
     assertStudioClosed(context, run);
     // No timeout: interrupting the journaled installer leaves recovery to the next run.
     const installed = run({ command: 'sh', args: [join(bootstrap, 'install.sh'), '--manifest-sha256', digest(manifest), '--platform', context.state.platform], env: context.env }, { stdio: 'inherit', timeout: undefined });
-    if (installed.error) throw new Error(installed.error);
+    if (installed.error || installed.code === null || installed.signal) throw new Error(`Release installer interrupted. Rerun the install command to recover its journal. ${installed.error ?? installed.signal ?? ''} ${installed.stderr ?? ''}`);
     const activeFile = join(context.home, '.praxity/toolkit/active');
     if (!existsSync(activeFile) || readFileSync(activeFile, 'utf8').split('\n')[0] !== pack.version) throw new Error(`Release installer failed (${installed.code}). Nothing activated; rerun after resolving the reported error. ${installed.stderr ?? ''}`);
-    let code = installed.code ?? 1;
-    const project = findSkillsProject(context.cwd, context.home);
-    if (project) {
-      const refreshed = run({ command: 'sh', args: [join(context.home, '.praxity/bin/praxity'), 'skills', 'refresh', '--scope', 'project'], env: context.env }, { cwd: project, stdio: 'inherit', timeout: undefined });
-      if (refreshed.error || refreshed.code !== 0) {
-        print(`Project skills were not refreshed; pack ${pack.version} is active. ${refreshed.error ?? refreshed.stderr ?? ''} Resolve the reported file, then run praxity skills refresh --scope project in this project.`);
-        code = refreshed.code || 1;
-      }
-    }
+    if (installed.code !== 0) print(`Release installer exited ${installed.code}. ${installed.stderr ?? ''} Resolve the reported file, then run praxity skills refresh --scope user.`);
+    const code = refreshInstalledSkills(context, dependencies) || installed.code;
     print(`Active pack: ${pack.version}. The next Studio launch uses this pack. Restart the agent host if its skills changed.`);
     return code;
+}
+
+// Both callers use the same project discovery and actionable refusal diagnostics.
+export function refreshInstalledSkills(context, dependencies = {}, includeUser = false) {
+  const run = dependencies.updateProcess ?? probeProcess, print = dependencies.print ?? console.log;
+  const project = findSkillsProject(context.cwd, context.home);
+  const scopes = [...(includeUser ? [{ scope: 'user', cwd: context.home }] : []), ...(project ? [{ scope: 'project', cwd: project }] : [])];
+  let code = 0;
+  for (const { scope, cwd } of scopes) {
+    const refreshed = run({ command: 'sh', args: [join(context.home, '.praxity/bin/praxity'), 'skills', 'refresh', '--scope', scope], env: context.env }, { cwd, stdio: 'inherit', timeout: undefined });
+    if (refreshed.error || refreshed.code !== 0) {
+      print(`Skills were not refreshed. ${refreshed.error ?? refreshed.stderr ?? ''} Resolve the reported file, then run praxity skills refresh --scope ${scope}${scope === 'project' ? ' in this project' : ''}.`);
+      code = refreshed.code || 1;
+    }
+  }
+  return code;
 }
