@@ -13,9 +13,9 @@ export const officialReleaseChannel = Object.freeze({
   downloads: 'https://github.com/Praxity/rubato/releases/download/',
 });
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
-const closeInstruction = 'Save or copy all unsaved text in every Studio tab, close those tabs, then stop the Studio action in T3 or press Ctrl+C in its terminal and rerun praxity update.';
+const closeInstruction = 'Save or copy all unsaved text in every Studio tab, close those tabs, then stop the Studio action in T3 or press Ctrl+C in its terminal and rerun the command.';
 
-function assertStudioClosed(context, run) {
+export function assertStudioClosed(context, run = probeProcess) {
   const result = run({ command: 'ps', args: ['-A', '-ww', '-o', 'pid=,args='], env: context.env });
   if (result.error || result.code !== 0) throw new Error(`Cannot check running Studio sessions. ${closeInstruction} ${result.error ?? result.stderr}`);
   const root = join(realpathSync(context.home), '.praxity/toolkit').replaceAll('\\', '/') + '/';
@@ -82,25 +82,43 @@ export async function updatePack(context, dependencies = {}) {
     const extracted = run({ command: 'tar', args: ['-xf', bootstrapFile, '-C', bootstrap, '--strip-components=1'], env: context.env });
     if (extracted.error || extracted.code !== 0) throw new Error(`Release bootstrap extraction failed: ${extracted.error ?? extracted.stderr}`);
     if (!existsSync(join(bootstrap, 'pack.json')) || digest(readFileSync(join(bootstrap, 'pack.json'))) !== digest(manifest)) throw new Error('Bootstrap manifest SHA-256 mismatch');
+    return installVerifiedPack(context, { bootstrap, manifest }, dependencies);
+  } finally { rmSync(scratch, { recursive: true }); }
+}
+
+// The caller authenticates the bootstrap and manifest before invoking this owner.
+// Local reviewed checkouts and the official updater share activation and skills.
+export function installVerifiedPack(context, { bootstrap, manifest }, dependencies = {}) {
+    const run = dependencies.updateProcess ?? probeProcess, print = dependencies.print ?? console.log;
+    const pack = JSON.parse(manifest);
     // The verified release owns its manifest schema; the installed pack may be older.
     const errors = validateSchema(pack, JSON.parse(readFileSync(join(bootstrap, 'schemas/pack.schema.json'), 'utf8')));
     if (errors.length) throw new Error(`Invalid pack manifest:\n${errors.join('\n')}`);
+    if (digest(readFileSync(join(bootstrap, 'pack.json'))) !== digest(manifest)) throw new Error('Bootstrap manifest SHA-256 mismatch');
     assertStudioClosed(context, run);
     // No timeout: interrupting the journaled installer leaves recovery to the next run.
     const installed = run({ command: 'sh', args: [join(bootstrap, 'install.sh'), '--manifest-sha256', digest(manifest), '--platform', context.state.platform], env: context.env }, { stdio: 'inherit', timeout: undefined });
-    if (installed.error) throw new Error(installed.error);
+    if (installed.error || installed.code === null || installed.signal) throw new Error(`Release installer interrupted. Rerun the install command to recover its journal. ${installed.error ?? installed.signal ?? ''} ${installed.stderr ?? ''}`);
     const activeFile = join(context.home, '.praxity/toolkit/active');
-    if (!existsSync(activeFile) || readFileSync(activeFile, 'utf8').split('\n')[0] !== pack.version) throw new Error(`Release installer failed (${installed.code}). Nothing activated; rerun praxity update after resolving the reported error.`);
-    let code = installed.code ?? 1;
-    const project = findSkillsProject(context.cwd, context.home);
-    if (project) {
-      const refreshed = run({ command: 'sh', args: [join(context.home, '.praxity/bin/praxity'), 'skills', 'refresh', '--scope', 'project'], env: context.env }, { cwd: project, stdio: 'inherit', timeout: undefined });
-      if (refreshed.error || refreshed.code !== 0) {
-        print(`Project skills were not refreshed; pack ${pack.version} is active. ${refreshed.error ?? refreshed.stderr ?? ''} Resolve the reported file, then run praxity skills refresh --scope project in this project.`);
-        code = refreshed.code || 1;
-      }
-    }
+    if (!existsSync(activeFile) || readFileSync(activeFile, 'utf8').split('\n')[0] !== pack.version) throw new Error(`Release installer failed (${installed.code}). Nothing activated; rerun after resolving the reported error. ${installed.stderr ?? ''}`);
+    if (installed.code !== 0) print(`Release installer exited ${installed.code}. ${installed.stderr ?? ''} Resolve the reported file, then run praxity skills refresh --scope user.`);
+    const code = refreshInstalledSkills(context, dependencies) || installed.code;
     print(`Active pack: ${pack.version}. The next Studio launch uses this pack. Restart the agent host if its skills changed.`);
     return code;
-  } finally { rmSync(scratch, { recursive: true }); }
+}
+
+// Both callers use the same project discovery and actionable refusal diagnostics.
+export function refreshInstalledSkills(context, dependencies = {}, includeUser = false) {
+  const run = dependencies.updateProcess ?? probeProcess, print = dependencies.print ?? console.log;
+  const project = findSkillsProject(context.cwd, context.home);
+  const scopes = [...(includeUser ? [{ scope: 'user', cwd: context.home }] : []), ...(project ? [{ scope: 'project', cwd: project }] : [])];
+  let code = 0;
+  for (const { scope, cwd } of scopes) {
+    const refreshed = run({ command: 'sh', args: [join(context.home, '.praxity/bin/praxity'), 'skills', 'refresh', '--scope', scope], env: context.env }, { cwd, stdio: 'inherit', timeout: undefined });
+    if (refreshed.error || refreshed.code !== 0) {
+      print(`Skills were not refreshed. ${refreshed.error ?? refreshed.stderr ?? ''} Resolve the reported file, then run praxity skills refresh --scope ${scope}${scope === 'project' ? ' in this project' : ''}.`);
+      code = refreshed.code || 1;
+    }
+  }
+  return code;
 }

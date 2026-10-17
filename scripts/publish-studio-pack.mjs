@@ -16,7 +16,7 @@ const newer = (version, previous) => {
   return next.some((n, i) => n > old[i] && next.slice(0, i).every((v, j) => v === old[j]));
 };
 
-function verifyArchive(file, arch, studioSha, expectedDigest, studio) {
+export function verifyStudioArchive(file, arch, studioSha, expectedDigest, studio) {
   requireValue(lstatSync(file).isFile() && !lstatSync(file).isSymbolicLink(), 'Archive must be a regular file');
   const name = file.split(/[\\/]/).at(-1);
   const digest = hash(readFileSync(file));
@@ -80,7 +80,7 @@ export async function publishStudioPack({ version, studioSha, archivesDir, outpu
     const names = readdirSync(archivesDir).filter(name => new RegExp(`^praxity-cli-[A-Za-z0-9.-]+-macos-${arch}\\.tar\\.gz$`).test(name));
     requireValue(names.length === 1, 'Exactly one archive per native Mac architecture is required');
     const file = join(archivesDir, names[0]);
-    const verified = verifyArchive(file, arch, studioSha, expectedDigests?.[arch], studio);
+    const verified = verifyStudioArchive(file, arch, studioSha, expectedDigests?.[arch], studio);
     requireValue(!studioVersion || studioVersion === verified.version, 'Studio archive versions differ');
     studioVersion = verified.version;
     studio.archives[`darwin-${arch}`] = { status: 'published',

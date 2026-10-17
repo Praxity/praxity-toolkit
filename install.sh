@@ -72,6 +72,7 @@ LAUNCHER_TEMP=
 WORK=
 LEDGER_NODE=
 cleanup() {
+  [ ! -f "$ROOT/.activation-pending" ] || [ -z "$WORK" ] || recover_activation
   [ -z "$LAUNCHER_TEMP" ] || owned_remove_tree "$LAUNCHER_TEMP"
   [ -z "$WORK" ] || owned_remove_tree "$WORK"
   owned_remove_tree "$ROOT/.install-lock"
@@ -94,6 +95,23 @@ activate() {
   capture "$ACTIVATION" printf '%s\n%s\n' "$1" "$2"
   owned_publish "$ACTIVATION" "$ROOT/active"
 }
+# Persist the old pointers before publication so SIGKILL recovery uses the journal.
+recover_activation() {
+  [ -f "$ROOT/.activation-pending" ] || return 0
+  ledger_assert "$ROOT/.activation-pending"
+  RECOVERY_CURRENT=$(sed -n '1p' "$ROOT/.activation-pending")
+  RECOVERY_PREVIOUS=$(sed -n '2p' "$ROOT/.activation-pending")
+  if [ -n "$RECOVERY_CURRENT" ]; then
+    activate "$RECOVERY_CURRENT" "$RECOVERY_PREVIOUS"
+    printf 'Activation failed; rolled back to pack %s. Resolve the doctor error and rerun.\n' "$RECOVERY_CURRENT" >&2
+  else
+    owned_remove_tree "$ROOT/active"
+    owned_remove_tree "$BIN/praxity"
+    owned_remove_tree "$ROOT/.launcher-sha256"
+    printf '%s\n' 'Activation failed; rolled back to no active pack. Resolve the doctor error and rerun.' >&2
+  fi
+  owned_remove_tree "$ROOT/.activation-pending"
+}
 launcher_owned() {
   [ ! -e "$BIN/praxity" ] && [ ! -L "$BIN/praxity" ] && return 0
   ledger_assert "$BIN/praxity"
@@ -103,6 +121,8 @@ for METADATA in active active.tmp .manifest.json .manifest.tsv .plan.tsv .archiv
 done
 WORK=$(mktemp -u "$ROOT/.metadata.XXXXXX")
 owned_mkdir "$WORK"
+# Recover even after an uncatchable signal before accepting another action.
+recover_activation
 if [ -f "$ROOT/active" ]; then
   ledger_assert "$ROOT/active"
   ACTIVE_VERSION=$(sed -n '1p' "$ROOT/active")
@@ -219,7 +239,13 @@ download() (
   owned_destination "$ROOT/.cache/$FILE.part"
   printf 'Download: %s\n' "$URL"
   PARTIAL=$(new_temp "$ROOT/.cache/$FILE.part")
-  fetch "$PARTIAL" "$URL" "$HASH" || die 'Download interrupted or failed; rerun the same install command'
+  # Verified bootstraps may bundle private/local inputs under their content hash.
+  # The same checksum and journal owner admits bundled and downloaded bytes.
+  if [ -f "$SCRIPT_DIR/archives/$FILE" ]; then
+    capture "$PARTIAL" cat "$SCRIPT_DIR/archives/$FILE" || die 'Bundled archive read failed; rerun the same install command'
+  else
+    fetch "$PARTIAL" "$URL" "$HASH" || die 'Download interrupted or failed; rerun the same install command'
+  fi
   [ "$(sha256 "$PARTIAL")" = "$HASH" ] || { owned_remove_tree "$PARTIAL"; die "Checksum mismatch: $URL. Nothing activated."; }
   owned_publish "$PARTIAL" "$ROOT/.cache/$FILE"
 )
@@ -350,21 +376,39 @@ capture "$LAUNCHER_HASH" sha256 "$BIN/praxity"
 owned_publish "$LAUNCHER_HASH" "$ROOT/.launcher-sha256"
 CURRENT=$(sed -n '1p' "$ROOT/active" 2>/dev/null || true)
 PREVIOUS=$(sed -n '2p' "$ROOT/active" 2>/dev/null || true)
+OLD_PREVIOUS=$PREVIOUS
 if [ -n "$CURRENT" ] && [ "$CURRENT" != "$VERSION" ]; then
   owned_version "$CURRENT"
   PREVIOUS=$CURRENT
 fi
+ROLLBACK_CURRENT=$CURRENT
+ROLLBACK_PREVIOUS=$OLD_PREVIOUS
+# A failed recertification must not point back at the failing active version.
+if [ "$CURRENT" = "$VERSION" ]; then ROLLBACK_CURRENT=$OLD_PREVIOUS; ROLLBACK_PREVIOUS=; fi
+PENDING=$(new_temp)
+capture "$PENDING" printf '%s\n%s\n' "$ROLLBACK_CURRENT" "$ROLLBACK_PREVIOUS"
+owned_publish "$PENDING" "$ROOT/.activation-pending"
 activate "$VERSION" "$PREVIOUS"
 LEDGER_NODE="$ROOT/$VERSION/runtimes/node/$NODE_ENTRY"
 owned_remove_tree "$BOOTSTRAP"
+# Certify the new activation before refreshing any host's skills.
+if ! "$BIN/praxity" doctor; then
+  recover_activation
+  die 'Activation doctor failed. Resolve the reported error and rerun.'
+fi
+owned_remove_tree "$ROOT/.activation-pending"
 # A new pack can add or change skills. Refresh only host adapters the user
 # installed in their home; their ownership record names the files.
 # Packs before 0.1.0 have no refresh command. Reactivating one, as a rerun
 # of its installer does, leaves host skills as they are.
+REFRESH_CODE=0
 if grep -q 'refreshSkills' "$ROOT/$VERSION/src/cli.mjs"; then
-  "$BIN/praxity" skills refresh --scope user || printf '%s\n' 'Host skills were not refreshed; the pack is active. Resolve the file named above, then run praxity skills refresh --scope user. Their ownership record is ~/.praxity/toolkit-skills.json.' >&2
+  "$BIN/praxity" skills refresh --scope user || {
+    printf '%s\n' 'Host skills were not refreshed; the pack is active. Resolve the file named above, then run praxity skills refresh --scope user. Their ownership record is ~/.praxity/toolkit-skills.json.' >&2
+    REFRESH_CODE=1
+  }
 fi
 printf 'Installed pack %s. Add this line to PATH yourself:\n' "$VERSION"
 printf 'export PATH="$HOME/.praxity/bin:$PATH"\n'
 printf '%s\n' 'Close Studio before rollback or uninstall. Optional components require praxity setup consent.'
-"$BIN/praxity" doctor
+exit "$REFRESH_CODE"

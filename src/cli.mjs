@@ -30,7 +30,7 @@ export async function runCli(args, context, dependencies = {}) {
     for (const message of result.messages) print(message);
     return 0;
   }
-  if (command === 'version') {
+  if (command === 'version' || command === '--version') {
     if (rest.length) throw new Error('Usage: praxity version');
     const studio = context.pack.tools.find(tool => tool.id === 'studio');
     print(JSON.stringify({ pack: context.pack.version, studioSha: studio?.sourceRevision ?? studio?.version.match(/-main\.([a-f0-9]{7,40})$/)?.[1] ?? null, runtimes: Object.fromEntries(Object.entries(context.pack.runtimes).map(([id, runtime]) => [id, runtime.version])), tools: context.pack.tools.map(tool => ({ id: tool.id, version: tool.version, installed: context.state.installed.includes(tool.id) })) }, null, 2));
