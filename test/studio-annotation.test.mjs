@@ -278,7 +278,7 @@ test('annotation CLI examples bind rendered field, JSON text and whole-file revi
 
 test('CLI annotation contract uses admitted text fields for every kind and refuses missing evidence', () => {
   const skill = readFileSync(join(repository, 'skills/studio-editor/SKILL.md'), 'utf8').replace(/\s+/g, ' ');
-  assert.ok(skill.includes('`praxity inspect . --blocks --json`'));
+  assert.ok(skill.includes('`praxity inspect . --text-fields --json`'));
   assert.ok(skill.includes('exactly one `textFields[]` entry'));
   assert.ok(skill.includes('`nodeId` exactly equals the picked live `data-node-id` and whose `file` exactly equals the annotated page\'s lesson source file.'));
   assert.ok(skill.includes('Join only on those two values, never by text, DOM order or positional address.'));
@@ -293,7 +293,7 @@ test('CLI annotation contract uses admitted text fields for every kind and refus
   assert.equal(skill.includes('A generated title whose rendered ID has no exact inspect match also refuses'), false);
   assert.match(skill, /Minimum Studio CLI build: `0\.3\.0-main\.[a-f0-9]{8}`/);
   const examples = readFileSync(join(repository, 'skills/studio-editor/references/annotation-examples.md'), 'utf8');
-  assert.ok(examples.includes('Join fresh `inspect --blocks --json` output\'s `textFields[]`'));
+  assert.ok(examples.includes('Join fresh `inspect --text-fields --json` output\'s `textFields[]`'));
   assert.ok(examples.includes('Use its returned field for paragraphs, list items, choice options, feedback and captions when admitted.'));
   assert.ok(examples.includes('If no caption binding is returned, refuse without writing.'));
 });

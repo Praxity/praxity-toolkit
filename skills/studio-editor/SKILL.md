@@ -127,12 +127,12 @@ the bearer for RPC, copy it into `curl`, shell arguments, environment assignment
 scripts, logs or tool output, or invent an RPC command. If fresh CLI inspection
 cannot resolve the annotation, refuse and ask for a fresh element pick.
 
-Minimum Studio CLI build: `0.3.0-main.3db0d7b9`, or a later build containing
+Minimum Studio CLI build: `0.3.0-main.d18cba84`, or a later build containing
 that text-field contract. Older 0.3.0 builds are insufficient. Confirm the installed
 build supports the inspection below; missing fields refuse. This skill update
 does not change the Studio version pinned in a Rubato pack.
 
-Run `praxity inspect . --blocks --json`. Require exactly one `textFields[]` entry whose
+Run `praxity inspect . --text-fields --json`. Require exactly one `textFields[]` entry whose
 `nodeId` exactly equals the picked live `data-node-id` and whose `file` exactly
 equals the annotated page's lesson source file. Establish that file from fresh
 Studio page/source context, never from the title or quote. Join only on those
