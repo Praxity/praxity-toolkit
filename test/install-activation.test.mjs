@@ -57,3 +57,16 @@ for (const corrupt of [false, true]) test(`bundled content-addressed archive cor
   if(corrupt){assert.notEqual(result.status,0);assert.match(result.stderr,/checksum|SHA-256|transfer failed/i);assert.equal(existsSync(join(f.toolkit,'active')),false);}
   else assert.equal(result.status,0,result.stdout+result.stderr);
 });
+
+for (const boundary of ['.activation-pending', 'active']) for (const prior of [false, true]) test(`KILL after ${boundary} publication, prior=${prior}`, { skip: process.platform === 'win32' }, t => {
+ const f=installation(t,{tools:['studio']});
+ if(prior){assert.equal(f.install().status,0);f.pack.version='0.2.0';f.save();}
+ const bin=join(f.root,'crash-bin'),marker=join(f.root,'crashed');mkdirSync(bin);
+ const real=shell('command -v mv').stdout.trim();
+ writeFileSync(join(bin,'mv'),`#!/bin/sh\n${quote(real)} "$@"\ncode=$?\nfor destination; do :; done\nif [ "$code" = 0 ] && [ "$destination" = ${quote(join(f.toolkit,boundary))} ] && [ ! -e ${quote(marker)} ]; then touch ${quote(marker)}; kill -KILL "$(cat ${quote(join(f.toolkit,'.install-lock/pid'))})"; fi\nexit "$code"\n`,{mode:0o755});
+ f.env.PATH=`${bin}:${f.env.PATH}`;
+ const interrupted=f.install();assert.notEqual(interrupted.status,0);assert.equal(existsSync(marker),true,interrupted.stderr);
+ const retry=f.install();assert.equal(retry.status,0,retry.stdout+retry.stderr);
+ assert.equal(readFileSync(join(f.toolkit,'active'),'utf8'),`${f.pack.version}\n${prior?'0.1.0':''}\n`);
+ assert.equal(existsSync(join(f.toolkit,'.activation-pending')),false);
+});

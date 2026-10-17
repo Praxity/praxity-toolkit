@@ -35,6 +35,7 @@ function newer(version, current) {
 
 export async function updatePack(context, dependencies = {}) {
   const fetchRelease = dependencies.fetch ?? fetch, run = dependencies.updateProcess ?? probeProcess;
+  const print = dependencies.print ?? console.log;
   assertStudioClosed(context, run);
   const download = async url => {
     const response = await fetchRelease(url, { signal: AbortSignal.timeout(30_000), headers: url === officialReleaseChannel.metadata ? { Accept: 'application/vnd.github+json' } : undefined });
