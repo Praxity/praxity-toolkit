@@ -13,7 +13,7 @@ export const officialReleaseChannel = Object.freeze({
   downloads: 'https://github.com/Praxity/rubato/releases/download/',
 });
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
-const closeInstruction = 'Save or copy all unsaved text in every Studio tab, close those tabs, then stop the Studio action in T3 or press Ctrl+C in its terminal and rerun praxity update.';
+const closeInstruction = 'Save or copy all unsaved text in every Studio tab, close those tabs, then stop the Studio action in T3 or press Ctrl+C in its terminal and rerun the command.';
 
 export function assertStudioClosed(context, run = probeProcess) {
   const result = run({ command: 'ps', args: ['-A', '-ww', '-o', 'pid=,args='], env: context.env });

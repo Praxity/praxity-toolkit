@@ -170,8 +170,9 @@ GitHub asset response.
 The installer verifies runtime and tool archives and activates the pack with
 its existing ownership journal and atomic version switch. The previous pack
 remains available to `praxity rollback`. Downloads or checksum failures leave
-the old pack active. A doctor failure after activation returns a failure code
-with the new pack still active.
+the old pack active. A doctor failure after activation restores the previous
+activation and exits nonzero. A failed first activation removes its active
+pointer and launcher. The failed pack stays owned for inspection or retry.
 
 Using this command trusts GitHub's HTTPS delivery and the people with release
 access to `Praxity/rubato` to supply executable bootstrap code and its manifest.
@@ -189,7 +190,7 @@ preserved; a refused refresh names the command to retry after resolving the
 reported file. A pack can be active even when a skill refresh refuses.
 Start a new host session if it needs to discover changed skills.
 
-`praxity version` reports the active pack and `studioSha`. New releases record
+`praxity version`, also available as `praxity --version`, reports the active pack and `studioSha`. New releases record
 the full tested Studio commit in the Studio tool's optional `sourceRevision` field.
 Older packs report the abbreviated SHA in a `-main.<sha>` Studio version, or
 `null` when the manifest does not identify one.

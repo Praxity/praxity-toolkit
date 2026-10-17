@@ -49,14 +49,14 @@ test('an upgrade refreshes changed tool skills for both recorded adapters', t =>
   assert.deepEqual(JSON.parse(readFileSync(join(setup.home, '.praxity/toolkit-skills.json'))).hosts, ['claude', 'codex']);
 });
 
-test('a refused skill refresh still activates the pack and names the refresh command', t => {
+test('a refused skill refresh exits nonzero, keeps the active pack and names the refresh command', t => {
   const setup = installation(t);
   passed(setup.install());
   passed(shell(`${quote(posix(join(setup.home, '.praxity/bin/praxity')))} skills install --host claude --scope user`, { env: setup.env }));
   const edited = join(setup.home, '.claude/skills/prax-format/SKILL.md');
   writeFileSync(edited, 'MY EDITS');
   setup.pack.version = '0.2.0'; setup.save();
-  const upgrade = setup.install(); passed(upgrade);
+  const upgrade = setup.install(); assert.equal(upgrade.status, 1, `${upgrade.stdout}\n${upgrade.stderr}`);
   assert.match(upgrade.stderr, /Owned adapter changed/);
   assert.match(upgrade.stderr, /then run praxity skills refresh --scope user\. Their ownership record is ~\/\.praxity\/toolkit-skills\.json\./);
   assert.equal(readFileSync(join(setup.toolkit, 'active'), 'utf8'), '0.2.0\n0.1.0\n');
