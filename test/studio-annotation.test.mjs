@@ -262,6 +262,7 @@ test('annotation CLI examples bind rendered field, JSON text and whole-file revi
     const args = command.split(/\s+/);
     assert.equal(args[3], 'setText');
     assert.equal(args[args.indexOf('--at') + 1], '<rendered-nodeId>');
+    assert.ok(args.includes('--rendered'), 'select rendered admission when source UUIDs coincide');
     assert.ok(command.includes('--arg field=<field>'));
     assert.ok(command.includes('--arg text=<json-string>'));
     assert.equal(args[args.indexOf('--expect-revision') + 1], '<fileRevision>');

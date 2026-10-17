@@ -127,7 +127,7 @@ the bearer for RPC, copy it into `curl`, shell arguments, environment assignment
 scripts, logs or tool output, or invent an RPC command. If fresh CLI inspection
 cannot resolve the annotation, refuse and ask for a fresh element pick.
 
-Minimum Studio CLI build: `0.3.0-main.d18cba84`, or a later build containing
+Minimum Studio CLI build: `0.3.0-main.e49042a1`, or a later build containing
 that text-field contract. Older 0.3.0 builds are insufficient. Confirm the installed
 build supports the inspection below; missing fields refuse. This skill update
 does not change the Studio version pinned in a Rubato pack.
@@ -150,11 +150,13 @@ inconsistent repeats refuse. Use these templates, passing the replacement as a
 JSON string through the host's structured process arguments:
 
 ```sh
-praxity edit . setText --at <rendered-nodeId> --arg field=<field> --arg text=<json-string> --expect-revision <fileRevision> --dry-run --json
-praxity edit . setText --at <rendered-nodeId> --arg field=<field> --arg text=<json-string> --expect-revision <fileRevision> --json
+praxity edit . setText --at <rendered-nodeId> --rendered --arg field=<field> --arg text=<json-string> --expect-revision <fileRevision> --dry-run --json
+praxity edit . setText --at <rendered-nodeId> --rendered --arg field=<field> --arg text=<json-string> --expect-revision <fileRevision> --json
 ```
 
 Both commands require the exact rendered ID and whole-file revision.
+Use `--rendered` to select rendered-field admission when the rendered ID equals
+the source UUID. CLI applies record attribution in `.praxity/review/next-run.json`.
 For annotation edits, forbid `--find`, `--page`, `--block` and `--line`, including
 positional tree addresses in `--at`. Inspect the dry run's `mapping`, `files` and
 planned source change against the resolved rendered ID, lesson and intended field.
